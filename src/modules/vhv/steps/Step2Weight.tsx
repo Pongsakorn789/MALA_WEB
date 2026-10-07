@@ -13,24 +13,56 @@ export const Step2Weight: React.FC<Step2WeightProps> = ({
   weightInput,
   onWeightChange,
 }) => {
+  const hasPrevious = currentPatient.weight != null;
+  const current = parseFloat(weightInput);
+ const diff =
+  hasPrevious && !Number.isNaN(current)
+    ? Math.round((current - currentPatient.weight!) * 10) / 10
+    : null;
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-[15px] font-semibold text-[#17301F]">กรอกน้ำหนักวันนี้[cite: 11]</h2>
-        <p className="text-[12.5px] text-[#6B786D] mt-0.5">ชั่งน้ำหนักผู้ป่วยวันนี้ แล้วกรอกค่าที่อ่านได้[cite: 11]</p>
-      </div>
+    <div className="space-y-5 font-sans text-sm text-zinc-900">
+      <header className="space-y-1">
+        <h2 className="text-lg font-semibold tracking-tight">น้ำหนักวันนี้</h2>
+        <p className="leading-relaxed text-zinc-500">ชั่งน้ำหนักผู้ป่วย แล้วกรอกค่าที่อ่านได้</p>
+      </header>
 
-      <div className="rounded-md border border-[#DCE3DA] p-4 text-center space-y-1 bg-white">
-        <span className="text-[11px] text-[#8A968C]">น้ำหนัก (กิโลกรัม)[cite: 11]</span>
-        <p className="text-3xl font-semibold tabular-nums text-[#0E5C33]">{weightInput || '0'}</p>
-        {currentPatient.weight != null && (
-          <span className="text-[11.5px] text-[#8A968C] block">
-            ครั้งก่อน {currentPatient.weight} กก. (12 มิ.ย. 2569)[cite: 11]
+      {/* ค่าที่กรอก */}
+      <section
+        className="rounded-2xl bg-zinc-50 px-5 py-7 text-center"
+        aria-live="polite"
+        aria-label="น้ำหนักที่กรอก"
+      >
+        <p className="flex items-baseline justify-center gap-2">
+          <span
+            className={`text-5xl font-semibold tabular-nums tracking-tight ${
+              weightInput ? 'text-zinc-900' : 'text-zinc-300'
+            }`}
+          >
+            {weightInput || '0'}
           </span>
+          <span className="text-base text-zinc-500">กก.</span>
+        </p>
+
+        {hasPrevious && (
+          <p className="mt-3 text-[13px] text-zinc-500">
+            ครั้งก่อน {currentPatient.weight} กก. (12 มิ.ย. 2569)
+            {diff !== null && diff !== 0 && (
+              <span
+                className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  Math.abs(diff) >= 2 ? 'bg-amber-50 text-amber-700' : 'bg-zinc-200/70 text-zinc-600'
+                }`}
+              >
+                {diff > 0 ? '+' : ''}
+                {diff} กก.
+              </span>
+            )}
+          </p>
         )}
-      </div>
+      </section>
 
       <NumberPad value={weightInput} onChange={onWeightChange} allowDecimal={true} />
     </div>
   );
 };
+
+export default Step2Weight;

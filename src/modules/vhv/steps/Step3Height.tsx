@@ -9,25 +9,43 @@ interface Step3HeightProps {
 
 export const Step3Height: React.FC<Step3HeightProps> = ({ heightInput, bmi, onHeightChange }) => {
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-[15px] font-semibold text-[#17301F]">กรอกส่วนสูง[cite: 11]</h2>
-        <p className="text-[12.5px] text-[#6B786D] mt-0.5">
-          กรอกครั้งเดียวใช้ได้ตลอด ระบบคำนวณ BMI ทันทีเพื่อนำไปประเมินความเสี่ยง[cite: 11]
+    <div className="space-y-5 font-sans text-sm text-zinc-900">
+      <header className="space-y-1">
+        <h2 className="text-lg font-semibold tracking-tight">ส่วนสูง</h2>
+        <p className="leading-relaxed text-zinc-500">
+          กรอกครั้งเดียวใช้ได้ตลอด ระบบคำนวณ BMI ทันทีเพื่อใช้ประเมินความเสี่ยง
         </p>
-      </div>
+      </header>
 
-      <div className="rounded-md border border-[#DCE3DA] p-4 text-center space-y-1 bg-white">
-        <span className="text-[11px] text-[#8A968C]">ส่วนสูง (เซนติเมตร)[cite: 11]</span>
-        <p className="text-3xl font-semibold tabular-nums text-[#0E5C33]">{heightInput || '0'}</p>
-        <div className="pt-1">
-          <span className="inline-block bg-[#F3F7EC] text-[#2C4A0C] border border-[#CDE0BF] px-3 py-1 rounded-full text-xs font-bold">
-            BMI ที่คำนวณได้ {bmi || '—'} kg/m²[cite: 11]
+      {/* ค่าที่กรอก + BMI */}
+      <section
+        className="rounded-2xl bg-zinc-50 px-5 py-7 text-center"
+        aria-live="polite"
+        aria-label="ส่วนสูงที่กรอก"
+      >
+        <p className="flex items-baseline justify-center gap-2">
+          <span
+            className={`text-5xl font-semibold tabular-nums tracking-tight ${
+              heightInput ? 'text-zinc-900' : 'text-zinc-300'
+            }`}
+          >
+            {heightInput || '0'}
           </span>
-        </div>
-      </div>
+          <span className="text-base text-zinc-500">ซม.</span>
+        </p>
+
+        <p className="mt-3 text-[13px] text-zinc-500">
+          BMI{' '}
+          <span className={`font-mono font-semibold ${bmi ? 'text-zinc-900' : 'text-zinc-400'}`}>
+            {bmi || '—'}
+          </span>{' '}
+          kg/m²
+        </p>
+      </section>
 
       <NumberPad value={heightInput} onChange={onHeightChange} allowDecimal={false} />
     </div>
   );
 };
+
+export default Step3Height;

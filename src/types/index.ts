@@ -23,4 +23,4 @@ export interface Patient {
 }
 
 // เพิ่มบรรทัดนี้ไว้ล่างสุด เพื่อให้ Vite Bundle ได้แน่นอน
-export const DUMMY_TYPES_LOADED = true;ห
+export const DUMMY_TYPES_LOADED = true;

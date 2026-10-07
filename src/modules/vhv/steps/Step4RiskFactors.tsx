@@ -1,5 +1,5 @@
 import React from 'react';
-import { Droplets, Check } from 'lucide-react';
+import { Droplets } from 'lucide-react';
 
 export type AlcoholLevel = 'none' | 'occasional' | 'regular' | 'heavy';
 
@@ -24,64 +24,90 @@ export const Step4RiskFactors: React.FC<Step4RiskFactorsProps> = ({
   onToggleDehydration,
 }) => {
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-[15px] font-semibold text-[#17301F]">เลือกระดับการดื่มแอลกอฮอล์[cite: 11]</h2>
-        <p className="text-[12.5px] text-[#6B786D] mt-0.5">
-          สอบถามการดื่มในช่วง 1 เดือนที่ผ่านมา แล้วเลือกระดับที่ตรงที่สุด[cite: 11]
-        </p>
-      </div>
+    <div className="space-y-8 font-sans text-sm text-zinc-900">
+      {/* ===== แอลกอฮอล์ ===== */}
+      <section className="space-y-4">
+        <header className="space-y-1">
+          <h2 className="text-lg font-semibold tracking-tight">การดื่มแอลกอฮอล์</h2>
+          <p className="leading-relaxed text-zinc-500">
+            สอบถามการดื่มในช่วง 1 เดือนที่ผ่านมา แล้วเลือกระดับที่ตรงที่สุด
+          </p>
+        </header>
 
-      <div className="space-y-2">
-        {ALCOHOL_OPTIONS.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => onSelectAlcohol(opt.id)}
-            className={`w-full text-left px-4 py-3 rounded-md border transition ${
-              alcoholLevel === opt.id ? 'border-[#0E5C33] bg-[#F3F7EC]' : 'border-[#DCE3DA] hover:bg-[#F6F4EF]'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[13.5px] font-semibold text-[#17301F]">{opt.label}[cite: 11]</span>
-              {alcoholLevel === opt.id && <Check className="w-4 h-4 text-[#0E5C33]" />}
-            </div>
-            <p className="text-[11.5px] text-[#8A968C] mt-0.5">{opt.hint}[cite: 11]</p>
-          </button>
-        ))}
-      </div>
+        <div role="radiogroup" aria-label="ระดับการดื่มแอลกอฮอล์" className="space-y-2">
+          {ALCOHOL_OPTIONS.map((opt) => {
+            const selected = alcoholLevel === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onSelectAlcohol(opt.id)}
+                className={`flex w-full items-center gap-3.5 rounded-xl border px-4 py-3.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0E5C33]/30 ${
+                  selected
+                    ? 'border-[#0E5C33] bg-emerald-50/50'
+                    : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+                }`}
+              >
+                {/* วงกลมเลือก */}
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
+                    selected ? 'border-[#0E5C33]' : 'border-zinc-300'
+                  }`}
+                  aria-hidden
+                >
+                  {selected && <span className="h-2.5 w-2.5 rounded-full bg-[#0E5C33]" />}
+                </span>
 
-      {/* ภาวะขาดน้ำ / Sick Day Rule Trigger */}
-      <div className="pt-4 border-t border-[#EEF0EA] space-y-2">
-        <p className="text-[12.5px] font-medium text-[#5C6B5F] flex items-center gap-1.5">
-          <Droplets className="w-3.5 h-3.5 text-blue-500" />
-          สัปดาห์นี้มีอาการท้องเสีย / ขาดน้ำหรือไม่?[cite: 1]
-        </p>
-        <div className="grid grid-cols-2 gap-2">
+                <span className="min-w-0">
+                  <span className="block font-medium">{opt.label}</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-zinc-500">{opt.hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ===== ภาวะขาดน้ำ / Sick Day Rule ===== */}
+      <section className="space-y-3 border-t border-zinc-100 pt-6">
+        <h3 className="flex items-center gap-2 font-medium">
+          <Droplets className="h-4 w-4 text-sky-500" />
+          สัปดาห์นี้มีอาการท้องเสียหรือขาดน้ำหรือไม่?
+        </h3>
+
+        <div
+          role="radiogroup"
+          aria-label="อาการท้องเสียหรือขาดน้ำ"
+          className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1"
+        >
           <button
             type="button"
+            role="radio"
+            aria-checked={!hasDehydration}
             onClick={() => onToggleDehydration(false)}
-            className={`h-11 rounded-md text-[12.5px] font-semibold border transition ${
-              !hasDehydration
-                ? 'bg-[#0E5C33] text-white border-[#0E5C33]'
-                : 'bg-white text-[#5C6B5F] border-[#DCE3DA] hover:bg-[#F6F4EF]'
+            className={`h-11 rounded-lg font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0E5C33]/30 ${
+              !hasDehydration ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800'
             }`}
           >
             ไม่มีอาการ
           </button>
           <button
             type="button"
+            role="radio"
+            aria-checked={hasDehydration}
             onClick={() => onToggleDehydration(true)}
-            className={`h-11 rounded-md text-[12.5px] font-semibold border transition ${
-              hasDehydration
-                ? 'bg-[#95650B] text-white border-[#95650B]'
-                : 'bg-white text-[#5C6B5F] border-[#DCE3DA] hover:bg-[#F6F4EF]'
+            className={`h-11 rounded-lg font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 ${
+              hasDehydration ? 'bg-amber-600 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-800'
             }`}
           >
             มีอาการขาดน้ำ
           </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 };
+
+export default Step4RiskFactors;

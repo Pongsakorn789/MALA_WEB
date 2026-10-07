@@ -1,20 +1,29 @@
 import React, { useState } from 'react';
-import { User, Lock, Eye, EyeOff, AlertCircle, Stethoscope, HeartPulse, Users } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2 } from 'lucide-react';
 import logo from '../assets/logo.png';
 
 interface LoginScreenProps {
-  onLoginSuccess: (role: 'VHV' | 'SHPH' | 'DOCTOR', username: string) => void;
+  onLoginSuccess: (role: 'SHPH' | 'DOCTOR', username: string) => void;
 }
 
 const ROLE_PREFIXES = [
-  { code: 'DOC', label: 'แพทย์', icon: Stethoscope, tint: 'text-sky-700 bg-sky-50 border-sky-200' },
-  { code: 'NUR', label: 'พยาบาล', icon: HeartPulse, tint: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
-  { code: 'VHV', label: 'อสม.', icon: Users, tint: 'text-amber-700 bg-amber-50 border-amber-200' },
+  { 
+    code: 'SHPH', 
+    label: 'เจ้าหน้าที่ รพ.สต.', 
+    icon: Building2, 
+    tint: 'text-emerald-800 bg-emerald-50 border-emerald-300' 
+  },
+  { 
+    code: 'DOC', 
+    label: 'แพทย์ / ทีมสหวิชาชีพ', 
+    icon: Stethoscope, 
+    tint: 'text-sky-800 bg-sky-50 border-sky-300' 
+  },
 ] as const;
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('SHPH001');
+  const [password, setPassword] = useState('123456');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -26,24 +35,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
     if (trimmedUser.startsWith('DOC')) {
       onLoginSuccess('DOCTOR', trimmedUser);
-    } else if (trimmedUser.startsWith('NUR')) {
+    } else if (trimmedUser.startsWith('SHPH') || trimmedUser.startsWith('NUR')) {
       onLoginSuccess('SHPH', trimmedUser);
-    } else if (trimmedUser.startsWith('VHV')) {
-      onLoginSuccess('VHV', trimmedUser);
     } else {
-      setErrorMessage('รหัสเจ้าหน้าที่ไม่ถูกต้อง ต้องขึ้นต้นด้วย DOC, NUR หรือ VHV');
+      setErrorMessage('รหัสเจ้าหน้าที่ไม่ถูกต้อง ต้องขึ้นต้นด้วย SHPH (รพ.สต.) หรือ DOC (รพ.ศูนย์)');
     }
   };
 
   const applyPrefix = (code: string) => {
-    const rest = username.trim().replace(/^[A-Za-z]*/, '');
-    setUsername(code + rest);
+    setUsername(code + '001');
   };
 
-  const activePrefix = username.trim().toUpperCase().slice(0, 3);
+  const activePrefix = username.trim().toUpperCase().slice(0, 4).startsWith('DOC') ? 'DOC' : 'SHPH';
 
   return (
-    <div className="min-h-screen bg-[#F5F7F4] flex flex-col justify-center items-center p-4">
+    <div className="min-h-screen bg-[#F5F7F4] flex flex-col justify-center items-center p-4 font-sans">
       <div className="w-full max-w-md">
         {/* Card */}
         <div className="bg-white rounded-[28px] border border-[#E4E9E1] shadow-[0_1px_2px_rgba(15,23,18,0.04),0_12px_32px_-16px_rgba(15,23,18,0.12)] overflow-hidden">
@@ -63,7 +69,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   ระบบประเมินและเฝ้าระวังความเสี่ยงภาวะ MALA
                 </h1>
                 <p className="text-[13px] text-[#6C7A70]">
-                  สำหรับผู้ป่วยเบาหวานที่มีภาวะไตเสื่อม
+                  โรงพยาบาลเชียงรายประชานุเคราะห์ และเครือข่าย รพ.สต.
                 </p>
               </div>
             </div>
@@ -72,37 +78,38 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               {/* Username */}
               <div className="space-y-2">
                 <label className="block text-[13px] font-medium text-[#3B4A40]">
-                  ชื่อผู้ใช้งาน / เลขประจำตัว
+                  เลือกบทบาทผู้ใช้งาน / รหัสประจำตัว
                 </label>
-                <div className="relative">
+
+                {/* ปุ่มเลือก 2 Roles ตามสไลด์ */}
+                <div className="grid grid-cols-2 gap-2 pt-0.5">
+                  {ROLE_PREFIXES.map(({ code, label, icon: Icon, tint }) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => applyPrefix(code)}
+                      className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-[11.5px] font-semibold transition text-center gap-1.5 ${
+                        activePrefix === code
+                          ? tint + ' ring-2 ring-emerald-600/20'
+                          : 'text-[#8B958E] bg-[#FAFBF9] border-[#E4E9E1] hover:bg-[#F0F2ED]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative pt-1">
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9AA69C]" />
                   <input
                     type="text"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="เช่น DOC001"
+                    placeholder="เช่น SHPH001 หรือ DOC001"
                     className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAFBF9] border border-[#DEE4DB] rounded-xl text-[14px] text-[#16241A] placeholder:text-[#AFB8AC] outline-none transition focus:border-[#0B6B38] focus:bg-white focus:ring-2 focus:ring-[#0B6B38]/12"
                   />
-                </div>
-
-                {/* Role prefix chips — pick your role, fills the code for you */}
-                <div className="flex gap-1.5 pt-0.5">
-                  {ROLE_PREFIXES.map(({ code, label, icon: Icon, tint }) => (
-                    <button
-                      key={code}
-                      type="button"
-                      onClick={() => applyPrefix(code)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-[12px] font-medium transition ${
-                        activePrefix === code
-                          ? tint + ' ring-1 ring-inset ring-current/20'
-                          : 'text-[#8B958E] bg-transparent border-[#E4E9E1] hover:bg-[#FAFBF9]'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      {label}
-                    </button>
-                  ))}
                 </div>
               </div>
 
@@ -137,6 +144,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 <label className="flex items-center gap-1.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
+                    defaultChecked
                     className="w-3.5 h-3.5 rounded border-[#C7D0C3] text-[#0B6B38] focus:ring-[#0B6B38]/30"
                   />
                   <span>จดจำการเข้าสู่ระบบ</span>
@@ -155,7 +163,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
               <button
                 type="submit"
-                className="w-full py-3 bg-[#0B6B38] hover:bg-[#08532b] active:bg-[#073e21] text-white font-semibold rounded-xl transition text-[14.5px]"
+                className="w-full py-3 bg-[#0B6B38] hover:bg-[#08532b] active:bg-[#073e21] text-white font-semibold rounded-xl transition text-[14.5px] shadow-sm"
               >
                 เข้าสู่ระบบ
               </button>
@@ -165,7 +173,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           {/* Footer */}
           <div className="px-8 py-4 bg-[#FAFBF9] border-t border-[#EDF1EB] text-center">
             <p className="text-[12px] text-[#9AA69C]">
-              มีปัญหาการเข้าใช้งาน? ติดต่อศูนย์ IT โรงพยาบาล
+              ศูนย์ข้อมูลยาและเภสัชสนเทศ รพ.เชียงรายประชานุเคราะห์
             </p>
           </div>
         </div>
@@ -173,3 +181,5 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     </div>
   );
 };
+
+export default LoginScreen;

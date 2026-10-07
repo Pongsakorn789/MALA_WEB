@@ -9,7 +9,7 @@ import { DashboardTab } from './tabs/DashboardTab';
 import { PatientListTab } from './tabs/PatientListTab';
 import { ReportsTab } from './tabs/ReportsTab';
 import { SettingsTab } from './tabs/SettingsTab';
-import { Stethoscope, Clock, CheckCircle2 } from 'lucide-react';
+import { Stethoscope, Clock } from 'lucide-react';
 
 export interface ShphDashboardProps {
   patients: Patient[];

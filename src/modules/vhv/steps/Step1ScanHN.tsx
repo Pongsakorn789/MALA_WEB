@@ -1,16 +1,33 @@
 import React, { useState } from 'react';
 import type { Patient } from '../../../types';
-import { ScanLine, Loader2, Search, User, ShieldCheck, Shuffle } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  ScanLine,
+  Search,
+  Shuffle,
+} from 'lucide-react';
 
 interface Step1ScanHNProps {
-  pendingPatients: Patient[];
+  patients: Patient[];
   currentPatient?: Patient;
   onSelectPatient: (patientId: string) => void;
   onConfirm: () => void;
 }
 
+// ระดับความเสี่ยง → ข้อความ + สี (ใช้ร่วมกันทั้งรายการค้นหาและผลสแกน)
+const riskInfo = (level?: string) => {
+  if (level === 'Red') return { label: 'เสี่ยงสูง', dot: 'bg-red-500', soft: 'bg-red-50 text-red-700' };
+  if (level === 'Yellow')
+    return { label: 'เสี่ยงปานกลาง', dot: 'bg-amber-500', soft: 'bg-amber-50 text-amber-700' };
+  return { label: 'ความเสี่ยงต่ำ', dot: 'bg-emerald-500', soft: 'bg-emerald-50 text-emerald-700' };
+};
+
+const initialOf = (name: string) => name.trim().charAt(0);
+
 export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
-  pendingPatients,
+  patients,
   currentPatient,
   onSelectPatient,
   onConfirm,
@@ -19,54 +36,71 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
   const [showManualSearch, setShowManualSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ฟังก์ชันสุ่มผู้ป่วยเมื่อแตะสแกน
+  // สุ่มผู้ป่วยเมื่อกดปุ่มสแกน (จำลองการอ่านสมุด)
   const startScan = () => {
     setScanState('scanning');
+
     window.setTimeout(() => {
-      if (pendingPatients.length > 0) {
-        // สุ่มรายชื่อผู้ป่วยจากคิว
-        const randomIndex = Math.floor(Math.random() * pendingPatients.length);
-        const randomPatient = pendingPatients[randomIndex];
-        onSelectPatient(randomPatient.id);
+      if (patients.length > 0) {
+        const randomIndex = Math.floor(Math.random() * patients.length);
+        onSelectPatient(patients[randomIndex].id);
       }
       setScanState('confirmed');
     }, 700);
   };
 
-  const filteredPatients = pendingPatients.filter(
-    (p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.citizenId.includes(searchQuery)
-  );
+  // ค้นหาจากชื่อ / เลขบัตรประชาชน / Patient ID
+  const filteredPatients = patients.filter((p) => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
+    return (
+      p.name.toLowerCase().includes(query) ||
+      p.citizenId.toLowerCase().includes(query) ||
+      p.id.toLowerCase().includes(query)
+    );
+  });
+
+  const isScanning = scanState === 'scanning';
+  const showScanner = scanState !== 'confirmed' && !showManualSearch;
+  const showSearch = scanState !== 'confirmed' && showManualSearch;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-[15px] font-semibold text-[#17301F]">สแกน HN จากสมุดประจำตัวผู้ป่วย</h2>
-        <p className="text-[12.5px] text-[#6B786D] mt-0.5">
-          ส่องกล้องไปที่หน้าสมุดหรือบัตรผู้ป่วย เพื่อให้ระบบอ่านเลข HN ให้อัตโนมัติ[cite: 8]
+    <div className="space-y-5 font-sans text-sm text-zinc-900">
+      <header className="space-y-1">
+        <h2 className="text-lg font-semibold tracking-tight">สแกน HN ผู้ป่วย</h2>
+        <p className="leading-relaxed text-zinc-500">
+          ส่องกล้องไปที่หน้าสมุดหรือบัตรผู้ป่วย ระบบจะอ่านเลข HN ให้อัตโนมัติ
         </p>
-      </div>
+      </header>
 
-      {scanState !== 'confirmed' && !showManualSearch && (
-        <>
+      {/* ===== สแกน ===== */}
+      {showScanner && (
+        <div className="space-y-3">
           <button
             type="button"
             onClick={startScan}
-            disabled={scanState === 'scanning'}
-            className="w-full aspect-[4/3] rounded-lg border-2 border-dashed border-[#C7D0C3] bg-[#F6F4EF] flex flex-col items-center justify-center gap-2 text-[#5C6B5F] hover:border-[#0E5C33] transition"
+            disabled={isScanning || patients.length === 0}
+            aria-busy={isScanning}
+            className="group relative flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-50 text-zinc-600 transition hover:bg-emerald-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0E5C33]/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {scanState === 'scanning' ? (
+            {/* มุมกรอบช่องเล็งกล้อง */}
+            <span className="pointer-events-none absolute left-5 top-5 h-6 w-6 rounded-tl-lg border-l-2 border-t-2 border-[#0E5C33]/60" />
+            <span className="pointer-events-none absolute right-5 top-5 h-6 w-6 rounded-tr-lg border-r-2 border-t-2 border-[#0E5C33]/60" />
+            <span className="pointer-events-none absolute bottom-5 left-5 h-6 w-6 rounded-bl-lg border-b-2 border-l-2 border-[#0E5C33]/60" />
+            <span className="pointer-events-none absolute bottom-5 right-5 h-6 w-6 rounded-br-lg border-b-2 border-r-2 border-[#0E5C33]/60" />
+
+            {isScanning ? (
               <>
-                <Loader2 className="w-8 h-8 animate-spin text-[#0E5C33]" />
-                <span className="text-[13px] font-medium">กำลังอ่านค่าและสุ่มดึง HN...</span>
+                <Loader2 className="h-9 w-9 animate-spin text-[#0E5C33]" />
+                <span className="font-medium">กำลังอ่านเลข HN...</span>
               </>
             ) : (
               <>
-                <ScanLine className="w-8 h-8 text-[#0E5C33]" />
-                <span className="text-[13.5px] font-semibold text-center px-4 text-[#17301F]">
-                  แตะเพื่อสแกน (จำลองสุ่มอ่านสมุดคนไข้)
-                </span>
-                <span className="text-[11.5px] text-[#8A968C] flex items-center gap-1">
-                  <Shuffle className="w-3 h-3" /> สุ่มรายชื่อผู้ป่วยจากฐานข้อมูล รพ.
+                <ScanLine className="h-9 w-9 text-[#0E5C33]" />
+                <span className="text-base font-semibold text-zinc-900">แตะเพื่อสแกน</span>
+                <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <Shuffle className="h-3 w-3" />
+                  โหมดจำลอง · สุ่มผู้ป่วยจากฐานข้อมูล รพ.
                 </span>
               </>
             )}
@@ -75,94 +109,154 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
           <button
             type="button"
             onClick={() => setShowManualSearch(true)}
-            className="w-full text-center text-[12.5px] text-[#0E5C33] font-medium py-1 hover:underline"
+            disabled={isScanning}
+            className="w-full py-2 text-[13px] font-medium text-[#0E5C33] transition hover:underline disabled:opacity-50"
           >
-            หรือค้นหาผู้ป่วยด้วยชื่อ / เลขบัตร ปชช. แทน
+            ค้นหาด้วยชื่อหรือเลขบัตรประชาชนแทน
           </button>
-        </>
+        </div>
       )}
 
-      {showManualSearch && scanState !== 'confirmed' && (
+      {/* ===== ค้นหาเอง ===== */}
+      {showSearch && (
         <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowManualSearch(false);
+              setSearchQuery('');
+            }}
+            className="inline-flex items-center gap-1.5 text-zinc-500 transition hover:text-[#0E5C33]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            กลับไปสแกน
+          </button>
+
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9AA394]" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
             <input
-              type="text"
+              type="search"
+              autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ค้นหาชื่อ หรือ เลขบัตร ปชช..."
-              className="w-full pl-10 pr-4 py-2.5 bg-[#F6F4EF] border border-[#E1E4DB] rounded-md text-sm outline-none focus:border-[#0E5C33]"
+              placeholder="ชื่อ เลขบัตร ปชช. หรือ Patient ID"
+              aria-label="ค้นหาผู้ป่วย"
+              className="w-full rounded-xl border border-zinc-200 bg-white py-3 pl-10 pr-4 outline-none transition placeholder:text-zinc-400 focus:border-[#0E5C33] focus:ring-2 focus:ring-[#0E5C33]/15"
             />
           </div>
-          <div className="max-h-56 overflow-y-auto border border-[#E1E4DB] rounded-md divide-y divide-[#EEF0EA]">
+
+          <p className="px-1 text-xs text-zinc-400">
+            {searchQuery.trim()
+              ? `พบ ${filteredPatients.length} จาก ${patients.length} คน`
+              : `ผู้ป่วยทั้งหมด ${patients.length} คน`}
+          </p>
+
+          <div className="max-h-80 overflow-y-auto rounded-2xl border border-zinc-200 bg-white">
             {filteredPatients.length === 0 ? (
-              <p className="text-sm text-[#8A968C] text-center py-6">ไม่พบรายชื่อผู้ป่วย</p>
+              <p className="py-10 text-center text-zinc-400">ไม่พบรายชื่อผู้ป่วย</p>
             ) : (
-              filteredPatients.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectPatient(p.id);
-                    setScanState('confirmed');
-                    setShowManualSearch(false);
-                  }}
-                  className="w-full text-left px-3.5 py-3 flex items-center gap-3 hover:bg-[#F6F4EF] transition"
-                >
-                  <div className="w-8 h-8 rounded-full bg-[#F3F7EC] text-[#0E5C33] flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold truncate text-[#17301F]">{p.name}</p>
-                    <p className="text-[11.5px] text-[#8A968C]">เลข ปชช: {p.citizenId}</p>
-                  </div>
-                </button>
-              ))
+              <ul className="divide-y divide-zinc-100">
+                {filteredPatients.map((p) => {
+                  const r = riskInfo(p.riskLevel);
+                  return (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelectPatient(p.id);
+                          setScanState('confirmed');
+                          setShowManualSearch(false);
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-zinc-50 focus-visible:bg-zinc-50 focus-visible:outline-none"
+                      >
+                        <div
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0E5C33] text-sm font-semibold text-white"
+                          aria-hidden
+                        >
+                          {initialOf(p.name)}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold">{p.name}</p>
+                          <p className="truncate text-xs text-zinc-500">
+                            <span className="font-mono">{p.citizenId}</span> · อายุ {p.age} ปี
+                          </p>
+                        </div>
+
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${r.soft}`}
+                        >
+                          {r.label}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </div>
         </div>
       )}
 
+      {/* ===== ยืนยันผู้ป่วย ===== */}
       {scanState === 'confirmed' && currentPatient && (
-        <div className="space-y-3">
-          <div className="rounded-md bg-[#17301F] text-white p-4 space-y-1 shadow">
-            <div className="flex justify-between items-center text-[11px] text-white/70">
-              <span>AI READER (ตรวจพบข้อมูลสมุดประจำตัว)</span>
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            </div>
-            <p className="text-[14px]">
-              อ่านค่าได้เป็น HN <span className="font-semibold text-emerald-300 font-mono">{currentPatient.citizenId}</span>[cite: 8]
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+              <CheckCircle2 className="h-4 w-4" />
+              อ่านข้อมูลจากสมุดประจำตัวได้แล้ว
             </p>
-            <p className="text-[13px] text-white/90">
-              {currentPatient.name} · อายุ {currentPatient.age} ปี[cite: 8]
-            </p>
-          </div>
 
-          <div className="p-3 bg-[#EBF3FB] border border-[#C5DCF5] rounded-md flex justify-between items-center text-xs">
-            <div>
-              <span className="font-bold text-[#18538A] block">eGFR ล่าสุด (จากฐานข้อมูล รพ.)[cite: 8]</span>
-              <span className="text-[11px] text-[#597899]">ดึงค่าแล็ปล่าสุดให้อัตโนมัติ</span>
+            <div className="mt-4 flex items-center gap-4">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0E5C33] text-lg font-semibold text-white"
+                aria-hidden
+              >
+                {initialOf(currentPatient.name)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-lg font-semibold tracking-tight">{currentPatient.name}</p>
+                <p className="text-zinc-500">
+                  HN <span className="font-mono text-zinc-800">{currentPatient.citizenId}</span> · อายุ{' '}
+                  {currentPatient.age} ปี
+                </p>
+              </div>
             </div>
-            <span className="text-base font-extrabold text-[#18538A] bg-white px-2.5 py-1 rounded border border-[#C5DCF5] font-mono">
-              {currentPatient.egfr} mL/min
-            </span>
-          </div>
 
-          <div className="grid grid-cols-2 gap-2.5 pt-1">
+            <div className="mt-5 grid grid-cols-2 divide-x divide-zinc-100 border-t border-zinc-100 pt-4">
+              <div>
+                <p className="text-xs text-zinc-500">ระดับความเสี่ยง</p>
+                <p className="mt-1.5 flex items-center gap-2 font-semibold">
+                  <span className={`h-2 w-2 rounded-full ${riskInfo(currentPatient.riskLevel).dot}`} />
+                  {riskInfo(currentPatient.riskLevel).label}
+                </p>
+              </div>
+              <div className="pl-4">
+                <p className="text-xs text-zinc-500">eGFR ล่าสุด (ฐานข้อมูล รพ.)</p>
+                <p className="mt-1 font-mono text-xl font-semibold leading-none">
+                  {currentPatient.egfr}
+                  <span className="ml-1 font-sans text-xs font-normal text-zinc-400">mL/min</span>
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-5 gap-2.5">
             <button
               type="button"
               onClick={startScan}
-              className="h-11 rounded-md border border-[#DCE3DA] text-[13px] font-semibold text-[#5C6B5F] hover:bg-[#F6F4EF] transition flex items-center justify-center gap-1.5"
+              className="col-span-2 flex h-12 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 font-medium text-zinc-600 transition hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0E5C33]/30"
             >
-              <Shuffle className="w-3.5 h-3.5" />
-              <span>สุ่มสแกนใหม่</span>
+              <Shuffle className="h-4 w-4" />
+              สแกนใหม่
             </button>
+
             <button
               type="button"
               onClick={onConfirm}
-              className="h-11 rounded-md bg-[#0E5C33] hover:bg-[#0A431F] text-white text-[13px] font-semibold transition"
+              className="col-span-3 h-12 rounded-xl bg-[#0E5C33] font-medium text-white transition hover:bg-[#0A431F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0E5C33]/40 focus-visible:ring-offset-2"
             >
-              ใช่ ถูกต้อง (ถัดไป)[cite: 8]
+              ถูกต้อง · ถัดไป
             </button>
           </div>
         </div>
@@ -170,3 +264,5 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
     </div>
   );
 };
+
+export default Step1ScanHN;

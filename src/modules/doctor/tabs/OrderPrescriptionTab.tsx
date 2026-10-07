@@ -1,17 +1,37 @@
 import React, { useState } from 'react';
 import type { Patient } from '../../../types';
-import { AlertTriangle, Save, CheckCircle2, UserCheck, FileText, Send } from 'lucide-react';
+import { CheckCircle2, FileText, Minus, Plus, Send, UserCheck } from 'lucide-react';
 
 interface OrderPrescriptionTabProps {
   patient: Patient;
   onPrescribe: (patientId: string, order: string) => void;
 }
 
+type OrderType = 'MAINTAIN' | 'REDUCE' | 'HOLD';
+
+const BRAND = '#0B6B38';
+
+const ORDER_OPTIONS: { value: OrderType; title: string; desc: string }[] = [
+  { value: 'REDUCE', title: 'ปรับลดยา Metformin', desc: 'ระบุขนาดยาใหม่ต่อวัน' },
+  { value: 'HOLD', title: 'หยุดยาชั่วคราว (Hold)', desc: 'งดยาจนกว่าค่าไตจะฟื้นตัว' },
+  { value: 'MAINTAIN', title: 'คงยาเดิมและเฝ้าระวัง', desc: 'ทานขนาดเดิมตามแพทย์สั่ง' },
+];
+
+// สีของค่า eGFR: ยิ่งต่ำยิ่งเสี่ยง
+const egfrTone = (v: number) => {
+  if (v < 30) return 'text-red-600';
+  if (v < 60) return 'text-amber-600';
+  return 'text-emerald-700';
+};
+
+const inputCls =
+  'w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-[#0B6B38] focus:ring-2 focus:ring-[#0B6B38]/15';
+
 export const OrderPrescriptionTab: React.FC<OrderPrescriptionTabProps> = ({
   patient,
   onPrescribe,
 }) => {
-  const [orderType, setOrderType] = useState<'MAINTAIN' | 'REDUCE' | 'HOLD'>('REDUCE');
+  const [orderType, setOrderType] = useState<OrderType>('REDUCE');
   const [pillsPerDay, setPillsPerDay] = useState<number>(1);
   const [noteToShph, setNoteToShph] = useState<string>(
     'ให้คนไข้ดื่มน้ำเกลือแร่ เฝ้าระวังอาการขาดน้ำ และนัดเจาะเลือดซ้ำสัปดาห์หน้า'
@@ -20,196 +40,268 @@ export const OrderPrescriptionTab: React.FC<OrderPrescriptionTabProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    let finalDirective = '';
 
+    const now = new Date();
+    const timeStamp = `${String(now.getDate()).padStart(2, '0')}/${String(
+      now.getMonth() + 1
+    ).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(
+      now.getMinutes()
+    ).padStart(2, '0')}`;
+
+    let directive = '';
     if (orderType === 'MAINTAIN') {
-      finalDirective = 'คงยาเดิมและเฝ้าระวังอย่างใกล้ชิด';
+      directive = 'คงยาเดิมและเฝ้าระวังอย่างใกล้ชิด';
     } else if (orderType === 'REDUCE') {
-      finalDirective = `ปรับลดยา Metformin ระบุขนาดใหม่: ${pillsPerDay} เม็ด/วัน (${pillsPerDay * 500} มก.)`;
+      directive = `ปรับลดยา Metformin เหลือ ${pillsPerDay} เม็ด/วัน (${pillsPerDay * 500} มก.)`;
     } else {
-      finalDirective = 'หยุดยา Metformin ชั่วคราว (Hold)';
+      directive = 'หยุดยา Metformin ชั่วคราว (Hold)';
     }
 
-    if (noteToShph.trim()) {
-      finalDirective += ` | หมายเหตุถึง รพ.สต.: ${noteToShph.trim()}`;
-    }
+    // รวมคำสั่งแพทย์และบันทึกประวัติการดูแลต่อเนื่องลงฐานข้อมูล
+    const finalDirective = `${directive} | แผนการดูแล: ${
+      noteToShph.trim() || 'ติดตามอาการตามรอบ'
+    } [บันทึกเมื่อ ${timeStamp}]`;
 
     onPrescribe(patient.id, finalDirective);
     setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
   };
 
-  return (
-    <div className="max-w-5xl mx-auto space-y-5 text-[12.5px] text-[#16241A]">
-      {/* 1. แถบแจ้งเตือนฉุกเฉิน */}
-      <div className="p-4 bg-white border-l-[3px] border-[#C4392B] rounded-2xl space-y-1 shadow-sm">
-        <div className="flex items-center gap-2 text-[#16241A] font-semibold text-[13.5px]">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#C4392B] shrink-0" />
-          <span>แจ้งเตือนเคสส่งต่อจาก รพ.สต. บ้านดอน</span>
-        </div>
-        <p className="text-[#5C6A61] pl-4.5 text-[12.5px] font-medium">
-          ผู้ป่วยมีความเสี่ยง MALA ระดับสูง กรุณาพิจารณาปรับขนาดยา Metformin
-        </p>
-      </div>
+  const riskSummary: { text: string; warn: boolean }[] = [
+    {
+      text: `ภาวะไตเสื่อม (eGFR ล่าสุด ${patient.egfr} mL/min/1.73m²)`,
+      warn: true,
+    },
+    {
+      text: patient.hasDehydration
+        ? 'ตรวจพบภาวะขาดน้ำ/ท้องเสียหน้างาน เสี่ยง Lactic Acidosis ฉับพลัน'
+        : 'ไม่มีภาวะขาดน้ำ',
+      warn: !!patient.hasDehydration,
+    },
+    {
+      text: patient.hasAlcohol ? 'มีประวัติดื่มเครื่องดื่มแอลกอฮอล์' : 'ไม่มีประวัติดื่มแอลกอฮอล์',
+      warn: !!patient.hasAlcohol,
+    },
+    {
+      text: `ปัจจุบันรับประทาน Metformin ${patient.metforminDose || '2 เม็ด/วัน (1,000 มก.)'}`,
+      warn: false,
+    },
+  ];
 
-      {/* 2. กล่องแสดงบันทึกทางการพยาบาล (Nurse Note) ที่ส่งมาจาก รพ.สต. */}
-      {patient.nurseNote ? (
-        <div className="p-4 bg-emerald-50/70 border border-[#CFE3D5] rounded-2xl space-y-1.5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#0B6B38]">
-            <FileText className="w-4 h-4" />
-            <span>บันทึกอาการและข้อความส่งต่อจากพยาบาล รพ.สต.:</span>
-          </div>
-          <p className="text-xs text-[#16241A] bg-white p-3 rounded-xl border border-[#DEE4DB] leading-relaxed font-medium">
-            "{patient.nurseNote}"
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 pb-12 font-sans text-sm text-zinc-900">
+      {/* แจ้งเตือนเคสส่งต่อ */}
+      <div role="alert" className="flex items-start gap-3 rounded-2xl bg-red-50 px-5 py-4">
+        <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" aria-hidden />
+        <div>
+          <p className="font-semibold text-red-900">เคสส่งต่อจาก รพ.สต. บ้านดอน</p>
+          <p className="mt-0.5 text-red-800/80">
+            ผู้ป่วยมีความเสี่ยง MALA ระดับสูง กรุณาพิจารณาปรับขนาดยา Metformin
           </p>
         </div>
-      ) : (
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex items-center gap-2">
-          <FileText className="w-4 h-4 text-slate-400" />
-          <span>ไม่มีบันทึกอาการเพิ่มเติมจาก รพ.สต. (ส่งต่อตามเกณฑ์ความเสี่ยงสีแดงอัตโนมัติ)</span>
-        </div>
-      )}
-
-      {/* 3. ข้อมูลผู้ป่วยและแหล่งส่งต่อ */}
-      <div className="bg-white border border-[#E4E9E1] rounded-2xl p-5 space-y-3 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2">
-          <div>
-            <span className="font-semibold text-[#16241A] text-[13.5px]">
-              ข้อมูลผู้ป่วย: {patient.name} (อายุ {patient.age} ปี)
-            </span>
-          </div>
-          <div>
-            <span className="font-medium text-[#5C6A61]">เลขบัตรประจำตัวประชาชน: </span>
-            <span className="text-[#16241A] font-mono">{patient.citizenId}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[#5C6A61]">
-          <div>
-            <span>เพศ: </span>
-            <b className="text-[#16241A]">{patient.gender || 'ชาย'}</b>
-          </div>
-          <div>
-            <span>นน./สส.: </span>
-            <b className="text-[#16241A]">{patient.weight || 66} กก. / {Math.round(patient.height * 100)} ซม.</b>
-          </div>
-          <div>
-            <span>BMI ปัจจุบัน: </span>
-            <b className="text-[#16241A]">{patient.bmi || '—'}</b>
-          </div>
-          <div className="col-span-2 md:col-span-1">
-            <span>ที่อยู่: </span>
-            <span className="text-[#16241A] font-medium">ต.บ้านดอน อ.เมือง จ.เชียงราย</span>
-          </div>
-        </div>
-
-        <div className="pt-2.5 border-t border-[#EDF1EB] flex items-center gap-1.5 text-[#5C6A61] font-medium">
-          <UserCheck className="w-4 h-4 text-[#0B6B38]" />
-          <span>ส่งต่อจาก: <b className="text-[#16241A]">{patient.screenedBy || 'พยาบาลวิชาชีพ ใจดี (รพ.สต. บ้านดอน)'}</b></span>
-        </div>
       </div>
 
-      {/* 4. สรุปสาเหตุความเสี่ยง */}
-      <div className="bg-white border border-[#E4E9E1] rounded-2xl p-5 space-y-2 shadow-sm">
-        <div className="flex items-center gap-1.5 text-[#A6740A] font-semibold text-[12.5px]">
-          <AlertTriangle className="w-4 h-4" />
-          <span>สรุปสาเหตุความเสี่ยง (AI Clinical Summary)</span>
-        </div>
-        <ul className="space-y-1 pl-5 list-disc text-[#3B4A40] font-medium marker:text-[#DEE4DB]">
-          <li>ผู้ป่วยมีภาวะไตเสื่อม (ค่า eGFR ล่าสุด = {patient.egfr} mL/min/1.73m²)</li>
-          <li>{patient.hasDehydration ? '⚠️ ตรวจพบภาวะขาดน้ำ/ท้องเสียหน้างาน (เสี่ยงต่อ Lactic Acidosis ฉับพลัน)' : 'ไม่มีภาวะขาดน้ำ'}</li>
-          <li>{patient.hasAlcohol ? '🍺 มีประวัติดื่มเครื่องดื่มแอลกอฮอล์' : 'ไม่มีประวัติดื่มแอลกอฮอล์'}</li>
-          <li>ปัจจุบันรับประทาน Metformin: {patient.metforminDose || '2 เม็ด/วัน (1,000 มก.)'}</li>
-        </ul>
-      </div>
-
-      {/* 5. ฟอร์มคำสั่งแพทย์ */}
-      <form onSubmit={handleSubmit} className="bg-white border border-[#E4E9E1] rounded-2xl p-5 space-y-4 shadow-sm">
-        <div className="font-semibold text-[#16241A] text-[13.5px] border-b border-[#EDF1EB] pb-3 flex justify-between items-center">
-          <span>คำสั่งแพทย์ (Physician Order)</span>
-          <span className="text-[11px] text-[#5C6A61] font-normal">ระบบจะซิงค์คำสั่งย้อนกลับไปที่หน้าจอ รพ.สต. ทันที</span>
-        </div>
-
-        {/* ตัวเลือกคำสั่งยา */}
-        <div className="space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-[#FAFBF9] transition">
-            <input
-              type="radio"
-              name="orderType"
-              checked={orderType === 'MAINTAIN'}
-              onChange={() => setOrderType('MAINTAIN')}
-              className="w-4 h-4 text-[#0B6B38] focus:ring-[#0B6B38]"
-            />
-            <span className="font-medium text-[#3B4A40]">คงยาเดิมและเฝ้าระวังอย่างใกล้ชิด</span>
-          </label>
-
-          <div className="flex flex-wrap items-center gap-3 p-2.5 rounded-xl hover:bg-[#FAFBF9] transition">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="radio"
-                name="orderType"
-                checked={orderType === 'REDUCE'}
-                onChange={() => setOrderType('REDUCE')}
-                className="w-4 h-4 text-[#0B6B38] focus:ring-[#0B6B38]"
-              />
-              <span className="font-medium text-[#3B4A40]">ปรับลดยา Metformin ระบุขนาดใหม่:</span>
-            </label>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                max="4"
-                disabled={orderType !== 'REDUCE'}
-                value={pillsPerDay}
-                onChange={(e) => setPillsPerDay(Number(e.target.value))}
-                className="w-16 px-2 py-1.5 text-center font-semibold border border-[#DEE4DB] rounded-lg bg-[#FAFBF9] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B6B38]/12 focus:border-[#0B6B38] disabled:opacity-50"
-              />
-              <span className="text-[#5C6A61] font-medium">เม็ด/วัน ({pillsPerDay * 500} มก.)</span>
+      <div className="grid gap-6 lg:grid-cols-5">
+        {/* ===== ซ้าย: ข้อมูลผู้ป่วย ===== */}
+        <div className="space-y-6 lg:col-span-3">
+          {/* ผู้ป่วย */}
+          <section className="rounded-2xl border border-zinc-200 bg-white">
+            <div className="flex items-center gap-4 p-5">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-semibold text-white"
+                style={{ backgroundColor: BRAND }}
+                aria-hidden
+              >
+                {patient.name.trim().charAt(0)}
+              </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-xl font-semibold tracking-tight">{patient.name}</h2>
+                <p className="text-zinc-500">
+                  {patient.gender || 'ชาย'} · {patient.age} ปี ·{' '}
+                  <span className="font-mono text-[13px]">{patient.citizenId}</span>
+                </p>
+                <p className="text-xs text-zinc-400">ต.บ้านดอน อ.เมือง จ.เชียงราย</p>
+              </div>
             </div>
-          </div>
 
-          <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-[#FAFBF9] transition">
-            <input
-              type="radio"
-              name="orderType"
-              checked={orderType === 'HOLD'}
-              onChange={() => setOrderType('HOLD')}
-              className="w-4 h-4 text-[#0B6B38] focus:ring-[#0B6B38]"
-            />
-            <span className="font-medium text-[#3B4A40]">หยุดยา Metformin ชั่วคราว (Hold)</span>
-          </label>
+            <div className="grid grid-cols-3 divide-x divide-zinc-100 border-t border-zinc-100">
+              <div className="p-5">
+                <p className="text-xs text-zinc-500">eGFR ล่าสุด</p>
+                <p className={`mt-1 font-mono text-2xl font-semibold ${egfrTone(patient.egfr)}`}>
+                  {patient.egfr}
+                </p>
+                <p className="text-[11px] text-zinc-400">mL/min/1.73m²</p>
+              </div>
+              <div className="p-5">
+                <p className="text-xs text-zinc-500">น้ำหนัก / ส่วนสูง</p>
+                <p className="mt-1 text-base font-semibold leading-snug">
+                  {patient.weight || 66} กก.
+                  <br />
+                  {Math.round(patient.height * 100)} ซม.
+                </p>
+              </div>
+              <div className="p-5">
+                <p className="text-xs text-zinc-500">BMI</p>
+                <p className="mt-1 font-mono text-2xl font-semibold">{patient.bmi || '—'}</p>
+                <p className="text-[11px] text-zinc-400">kg/m²</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 border-t border-zinc-100 px-5 py-3.5 text-zinc-500">
+              <UserCheck className="h-4 w-4 text-[#0B6B38]" />
+              <span>
+                ส่งต่อจาก{' '}
+                <span className="font-medium text-zinc-900">
+                  {patient.screenedBy || 'พยาบาลวิชาชีพ ใจดี (รพ.สต. บ้านดอน)'}
+                </span>
+              </span>
+            </div>
+          </section>
+
+          {/* บันทึกจากพยาบาล */}
+          {patient.nurseNote ? (
+            <section className="flex gap-3 rounded-2xl border border-zinc-200 bg-white p-5">
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#0B6B38]" />
+              <div>
+                <h3 className="text-xs font-medium text-zinc-500">บันทึกอาการจากพยาบาล รพ.สต.</h3>
+                <p className="mt-1 leading-relaxed text-zinc-800">“{patient.nurseNote}”</p>
+              </div>
+            </section>
+          ) : (
+            <p className="flex items-center gap-2 px-1 text-zinc-400">
+              <FileText className="h-4 w-4 shrink-0" />
+              ไม่มีบันทึกอาการเพิ่มเติม (ส่งต่อตามเกณฑ์ความเสี่ยงสีแดงอัตโนมัติ)
+            </p>
+          )}
+
+          {/* สรุปสาเหตุความเสี่ยง */}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h3 className="font-semibold">สรุปสาเหตุความเสี่ยง</h3>
+              <span className="text-xs text-zinc-400">สร้างโดย AI</span>
+            </div>
+            <ul className="space-y-2.5">
+              {riskSummary.map((item) => (
+                <li key={item.text} className="flex gap-3 leading-relaxed">
+                  <span
+                    className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                      item.warn ? 'bg-amber-500' : 'bg-zinc-300'
+                    }`}
+                    aria-hidden
+                  />
+                  <span className={item.warn ? 'text-zinc-900' : 'text-zinc-500'}>{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         </div>
 
-        {/* หมายเหตุถึง รพ.สต. */}
-        <div className="pt-1">
-          <label className="block text-[#3B4A40] font-semibold mb-1.5">
-            หมายเหตุและแผนการดูแลถึง รพ.สต. (Care Plan Note)
-          </label>
-          <textarea
-            rows={3}
-            value={noteToShph}
-            onChange={(e) => setNoteToShph(e.target.value)}
-            placeholder="ระบุคำแนะนำเพิ่มเติมถึงพยาบาล รพ.สต. เช่น การให้สารน้ำ, การงดยา, นัดหมายเจาะเลือด..."
-            className="w-full p-3 border border-[#DEE4DB] rounded-xl bg-[#FAFBF9] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B6B38]/12 focus:border-[#0B6B38] text-[12.5px] leading-relaxed"
-          />
-        </div>
-
-        {isSaved && (
-          <div className="p-3 bg-[#EAF3ED] border border-[#CFE3D5] rounded-xl flex items-center gap-2 text-[#0B6B38] text-[12.5px] font-medium animate-pulse">
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-            <span>ยืนยันคำสั่งแพทย์และส่งข้อมูลย้อนกลับไปยัง รพ.สต. เรียบร้อยแล้ว</span>
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className="w-full py-3.5 bg-[#0B6B38] hover:bg-[#08532b] text-white font-semibold rounded-xl transition text-[13px] flex items-center justify-center gap-2 shadow-sm"
+        {/* ===== ขวา: คำสั่งแพทย์ (ติดอยู่ขณะเลื่อนบนจอใหญ่) ===== */}
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-5 self-start rounded-2xl border border-zinc-200 bg-white p-5 lg:sticky lg:top-6 lg:col-span-2"
         >
-          <Send className="w-4 h-4" />
-          <span>ยืนยันคำสั่งแพทย์และส่งกลับ รพ.สต. ดูแลต่อ</span>
-        </button>
-      </form>
+          <div>
+            <h3 className="font-semibold">คำสั่งแพทย์</h3>
+            <p className="text-xs text-zinc-400">ระบบจะซิงค์คำสั่งกลับไปที่ รพ.สต. ทันที</p>
+          </div>
+
+          <fieldset className="space-y-2">
+            <legend className="sr-only">เลือกคำสั่งยา</legend>
+            {ORDER_OPTIONS.map((opt) => {
+              const selected = orderType === opt.value;
+              const isHold = opt.value === 'HOLD';
+              return (
+                <label
+                  key={opt.value}
+                  className={`block cursor-pointer rounded-xl border p-3.5 transition focus-within:ring-2 focus-within:ring-[#0B6B38]/20 ${
+                    selected
+                      ? isHold
+                        ? 'border-red-400 bg-red-50/60'
+                        : 'border-[#0B6B38] bg-emerald-50/50'
+                      : 'border-zinc-200 hover:border-zinc-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      name="orderType"
+                      checked={selected}
+                      onChange={() => setOrderType(opt.value)}
+                      className={`mt-0.5 h-4 w-4 ${
+                        isHold ? 'text-red-600 focus:ring-red-600' : 'text-[#0B6B38] focus:ring-[#0B6B38]'
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <p className="font-medium">{opt.title}</p>
+                      <p className="text-xs text-zinc-500">{opt.desc}</p>
+
+                      {opt.value === 'REDUCE' && selected && (
+                        <div className="mt-3 flex items-center gap-3">
+                          <div className="inline-flex items-center rounded-lg border border-zinc-200 bg-white">
+                            <button
+                              type="button"
+                              aria-label="ลดจำนวนเม็ด"
+                              onClick={() => setPillsPerDay((n) => Math.max(1, n - 1))}
+                              className="p-2 text-zinc-500 hover:text-zinc-900"
+                            >
+                              <Minus className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="w-8 text-center font-mono font-semibold">{pillsPerDay}</span>
+                            <button
+                              type="button"
+                              aria-label="เพิ่มจำนวนเม็ด"
+                              onClick={() => setPillsPerDay((n) => Math.min(4, n + 1))}
+                              className="p-2 text-zinc-500 hover:text-zinc-900"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <span className="text-[13px] text-zinc-600">
+                            เม็ด/วัน · {pillsPerDay * 500} มก.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </fieldset>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-medium text-zinc-700">
+              แผนการดูแลถึง รพ.สต.
+            </span>
+            <textarea
+              rows={4}
+              value={noteToShph}
+              onChange={(e) => setNoteToShph(e.target.value)}
+              placeholder="เช่น การให้สารน้ำ, การงดยา, นัดเจาะเลือด"
+              className={`${inputCls} resize-none leading-relaxed`}
+            />
+          </label>
+
+          {isSaved && (
+            <div
+              role="status"
+              className="flex items-start gap-2 rounded-xl bg-emerald-50 px-4 py-3 font-medium text-emerald-800"
+            >
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>ส่งคำสั่งแพทย์กลับไปที่ รพ.สต. แล้ว</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0B6B38] py-3 font-medium text-white transition hover:bg-[#08532b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B6B38]/40 focus-visible:ring-offset-2"
+          >
+            <Send className="h-4 w-4" />
+            ยืนยันและส่งกลับ รพ.สต.
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
+
+export default OrderPrescriptionTab;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Patient } from '../../../types';
-import { ArrowLeft, Stethoscope, CheckCircle2, Calendar, FileText, Save, UserCheck, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Stethoscope, CheckCircle2, FileText, Save, UserCheck } from 'lucide-react';
 
 interface DoctorFeedbackViewProps {
   patient: Patient;

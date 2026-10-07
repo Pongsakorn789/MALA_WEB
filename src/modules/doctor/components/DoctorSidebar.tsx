@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart2, Users, Pill, Settings } from 'lucide-react';
+import { BarChart2, Users, Settings } from 'lucide-react';
 import logo from '../../../assets/logo.png';
 
 interface DoctorSidebarProps {
@@ -10,7 +10,7 @@ interface DoctorSidebarProps {
 const NAV_ITEMS = [
   { key: 'overview' as const, label: 'ภาพรวม', icon: BarChart2 },
   { key: 'patients' as const, label: 'คนไข้ของฉัน', icon: Users },
-  { key: 'prescribe' as const, label: 'สั่งจ่ายยา', icon: Pill },
+
   { key: 'settings' as const, label: 'ตั้งค่า', icon: Settings },
 ];
 
