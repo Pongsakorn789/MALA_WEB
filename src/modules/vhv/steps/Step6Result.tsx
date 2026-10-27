@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Patient } from '../../../types';
 import {
   AlertTriangle,
@@ -9,6 +9,8 @@ import {
   Stethoscope,
   Users,
   Wine,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 
 interface Step6ResultProps {
@@ -33,6 +35,48 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
   const [doctorSent, setDoctorSent] = useState(patient.status === 'Escalated');
   const isHighRisk = risk === 'Red' || riskScore >= THRESHOLD;
 
+  // State สำหรับดึงคำแนะนำจาก Hugging Face AIผ่าน FastAPI Backend
+  const [aiRecommendation, setAiRecommendation] = useState<string | null>(null);
+  const [isLoadingAi, setIsLoadingAi] = useState<boolean>(true);
+
+  // ฟังก์ชันดึงข้อมูลจาก FastAPI Backend (Hugging Face AI)
+  const fetchAiRecommendations = async () => {
+    setIsLoadingAi(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/evaluate-mala-ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          age: patient.age,
+          egfr: patient.egfr,
+          weight: patient.weight || 60,
+          bmi: patient.bmi || 22,
+          hasDehydration: !!patient.hasDehydration,
+          hasAlcohol: !!patient.hasAlcohol,
+          metforminDose: patient.metforminDose || '2 เม็ด/วัน (1,000 มก.)',
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAiRecommendation(data.aiRecommendations);
+      } else {
+        setAiRecommendation(null);
+      }
+    } catch (error) {
+      console.warn('ไม่สามารถเชื่อมต่อ Hugging Face AI Backend ได้ ใช้คำแนะนำมาตรฐานระบบแทน:', error);
+      setAiRecommendation(null);
+    } finally {
+      setIsLoadingAi(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAiRecommendations();
+  }, [patient]);
+
   const handleSendLine = () => setLineSent(true);
 
   const handleSendToDoctor = () => {
@@ -48,8 +92,8 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
 
   return (
     <div className="space-y-5 font-sans text-sm text-zinc-900">
-      {/* 1. คะแนนความเสี่ยง */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      {/* 1. คะแนนความเสี่ยง MALA */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xs">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs text-zinc-500">คะแนนความเสี่ยง MALA</p>
@@ -93,44 +137,70 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
         </p>
       </section>
 
-      {/* 2. คำแนะนำสำหรับผู้ป่วย */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
-        <div className="mb-4 flex items-baseline justify-between gap-3">
-          <h3 className="font-semibold">คำแนะนำสำหรับผู้ป่วย</h3>
-          <span className="text-xs text-zinc-400">สร้างโดย AI · ใช้แจ้งคนไข้หน้างาน</span>
+      {/* 2. คำแนะนำสำหรับผู้ป่วย (วิเคราะห์โดย Hugging Face AI) */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xs">
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-emerald-600" />
+            <h3 className="font-semibold text-zinc-900">คำแนะนำสำหรับผู้ป่วย</h3>
+          </div>
+          <span className="flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+            {isLoadingAi ? (
+              <>
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                กำลังประมวลผล AI...
+              </>
+            ) : (
+              'สร้างโดย Hugging Face AI'
+            )}
+          </span>
         </div>
 
-        <ul className="space-y-4">
-          <li className="flex gap-3 rounded-xl bg-amber-50 p-4">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <div>
-              <p className="font-medium text-amber-900">กฎวันป่วย (Sick Day Rule)</p>
-              <p className="mt-0.5 leading-relaxed text-amber-800/80">
-                หยุดยาชั่วคราวเมื่อร่างกายขาดน้ำ ท้องเสีย อาเจียน หรือมีไข้สูง แล้วติดต่อ รพ.สต. ทันที
-              </p>
-            </div>
-          </li>
+        {/* แสดงผลคำแนะนำจาก AI หรือ Fallback เป็นมาตรฐาน */}
+        {isLoadingAi ? (
+          <div className="py-8 text-center text-zinc-400 space-y-2">
+            <RefreshCw className="h-6 w-6 animate-spin mx-auto text-emerald-600" />
+            <p className="text-xs font-medium">AI กำลังวิเคราะห์ผลแล็บและสร้างคำแนะนำเฉพาะราย...</p>
+          </div>
+        ) : aiRecommendation ? (
+          /* แสดงคำแนะนำที่ได้จาก Hugging Face AI Backend */
+          <div className="rounded-xl bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-800 whitespace-pre-line border border-zinc-200">
+            {aiRecommendation}
+          </div>
+        ) : (
+          /* คำแนะนำมาตรฐาน (Fallback ในกรณีที่ไม่ได้เปิด Server Backend) */
+          <ul className="space-y-4">
+            <li className="flex gap-3 rounded-xl bg-amber-50 p-4">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div>
+                <p className="font-medium text-amber-900">กฎวันป่วย (Sick Day Rule)</p>
+                <p className="mt-0.5 leading-relaxed text-amber-800/80">
+                  หยุดยาชั่วคราวเมื่อร่างกายขาดน้ำ ท้องเสีย อาเจียน หรือมีไข้สูง แล้วติดต่อ รพ.สต. ทันที
+                </p>
+              </div>
+            </li>
 
-          <li className="flex gap-3 px-1">
-            <Wine className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
-            <div>
-              <p className="font-medium">งดแอลกอฮอล์ทุกชนิด</p>
-              <p className="mt-0.5 leading-relaxed text-zinc-500">
-                การดื่มร่วมกับ Metformin ในภาวะไตเสื่อม เพิ่มความเสี่ยงเลือดเป็นกรดจากแลคติกอย่างชัดเจน
-              </p>
-            </div>
-          </li>
+            <li className="flex gap-3 px-1">
+              <Wine className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+              <div>
+                <p className="font-medium">งดแอลกอฮอล์ทุกชนิด</p>
+                <p className="mt-0.5 leading-relaxed text-zinc-500">
+                  การดื่มร่วมกับ Metformin ในภาวะไตเสื่อม เพิ่มความเสี่ยงเลือดเป็นกรดจากแลคติกอย่างชัดเจน
+                </p>
+              </div>
+            </li>
 
-          <li className="flex gap-3 px-1">
-            <HeartPulse className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-            <div>
-              <p className="font-medium">อาการเตือนที่ต้องไปโรงพยาบาลทันที</p>
-              <p className="mt-0.5 leading-relaxed text-zinc-500">
-                หายใจหอบลึก ปวดเมื่อยกล้ามเนื้อมาก อ่อนเพลียผิดปกติ คลื่นไส้
-              </p>
-            </div>
-          </li>
-        </ul>
+            <li className="flex gap-3 px-1">
+              <HeartPulse className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+              <div>
+                <p className="font-medium">อาการเตือนที่ต้องไปโรงพยาบาลทันที</p>
+                <p className="mt-0.5 leading-relaxed text-zinc-500">
+                  หายใจหอบลึก ปวดเมื่อยกล้ามเนื้อมาก อ่อนเพลียผิดปกติ คลื่นไส้
+                </p>
+              </div>
+            </li>
+          </ul>
+        )}
       </section>
 
       {/* 3. การจัดการเคสเสี่ยงสูง */}
@@ -139,7 +209,7 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
           <h3 className="px-1 font-semibold">ขั้นตอนต่อไป</h3>
 
           {/* ส่งปรึกษาแพทย์ */}
-          <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5">
+          <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-700">
                 <Stethoscope className="h-4 w-4" />
@@ -173,7 +243,7 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
           </div>
 
           {/* แจ้งเตือน LINE */}
-          <div className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5">
+          <div className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#06C755] text-[10px] font-bold text-white">
                 LINE
