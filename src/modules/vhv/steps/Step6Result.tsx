@@ -51,15 +51,20 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
     { label: 'ดื่มหนักตามเกณฑ์ข้อ 9', points: patient.bingeDrinking || patient.highWeeklyAlcohol ? 2 : 0 },
   ];
 
-  // State สำหรับดึงคำแนะนำจาก Hugging Face AIผ่าน FastAPI Backend
-  const [aiRecommendation, setAiRecommendation] = useState<string | null>(null);
-  const [isLoadingAi, setIsLoadingAi] = useState<boolean>(true);
+  const [apiRecommendation, setApiRecommendation] = useState<string | null>(null);
+  const [isLoadingRecommendation, setIsLoadingRecommendation] = useState<boolean>(true);
 
-  // ฟังก์ชันดึงข้อมูลจาก FastAPI Backend (Hugging Face AI)
-  const fetchAiRecommendations = async () => {
-    setIsLoadingAi(true);
+  // In development use the local API; production uses VITE_MALA_API_URL.
+  const fetchRecommendations = async () => {
+    setIsLoadingRecommendation(true);
     try {
-      const response = await fetch('http://localhost:8000/api/evaluate-mala-ai', {
+      const apiBaseUrl = import.meta.env.VITE_MALA_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      if (!apiBaseUrl) {
+        setApiRecommendation(null);
+        return;
+      }
+
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/evaluate-mala-ai`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -79,20 +84,20 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
 
       if (response.ok) {
         const data = await response.json();
-        setAiRecommendation(data.aiRecommendations);
+        setApiRecommendation(data.recommendations);
       } else {
-        setAiRecommendation(null);
+        setApiRecommendation(null);
       }
     } catch (error) {
-      console.warn('ไม่สามารถเชื่อมต่อ Hugging Face AI Backend ได้ ใช้คำแนะนำมาตรฐานระบบแทน:', error);
-      setAiRecommendation(null);
+      console.warn('ไม่สามารถเชื่อมต่อ MALA API ได้ ใช้คำแนะนำมาตรฐานระบบแทน:', error);
+      setApiRecommendation(null);
     } finally {
-      setIsLoadingAi(false);
+      setIsLoadingRecommendation(false);
     }
   };
 
   useEffect(() => {
-    fetchAiRecommendations();
+    fetchRecommendations();
   }, [patient]);
 
   const handleSendLine = () => setLineSent(true);
@@ -156,7 +161,7 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
         </ul>
       </section>
 
-      {/* 2. คำแนะนำสำหรับผู้ป่วย (วิเคราะห์โดย Hugging Face AI) */}
+      {/* คำแนะนำตามปัจจัยคัดกรองจาก API */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xs">
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
           <div className="flex items-center gap-2">
@@ -164,30 +169,30 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
             <h3 className="font-semibold text-zinc-900">คำแนะนำสำหรับผู้ป่วย</h3>
           </div>
           <span className="flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-            {isLoadingAi ? (
+            {isLoadingRecommendation ? (
               <>
                 <RefreshCw className="h-3 w-3 animate-spin" />
-                กำลังประมวลผล AI...
+                กำลังประมวลผล...
               </>
             ) : (
-              'สร้างโดย Hugging Face AI'
+              apiRecommendation ? 'คำแนะนำตามปัจจัยคัดกรอง' : 'คำแนะนำมาตรฐาน'
             )}
           </span>
         </div>
 
-        {/* แสดงผลคำแนะนำจาก AI หรือ Fallback เป็นมาตรฐาน */}
-        {isLoadingAi ? (
+        {/* แสดงผลคำแนะนำจาก API หรือใช้คำแนะนำมาตรฐานเมื่อ API ยังไม่พร้อม */}
+        {isLoadingRecommendation ? (
           <div className="py-8 text-center text-zinc-400 space-y-2">
             <RefreshCw className="h-6 w-6 animate-spin mx-auto text-emerald-600" />
-            <p className="text-xs font-medium">AI กำลังวิเคราะห์ผลแล็บและสร้างคำแนะนำเฉพาะราย...</p>
+            <p className="text-xs font-medium">กำลังสรุปคำแนะนำตามข้อมูลคัดกรอง...</p>
           </div>
-        ) : aiRecommendation ? (
-          /* แสดงคำแนะนำที่ได้จาก Hugging Face AI Backend */
+        ) : apiRecommendation ? (
+          /* แสดงคำแนะนำจากกฎที่ตรวจสอบได้ใน backend */
           <div className="rounded-xl bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-800 whitespace-pre-line border border-zinc-200">
-            {aiRecommendation}
+            {apiRecommendation}
           </div>
         ) : (
-          /* คำแนะนำมาตรฐาน (Fallback ในกรณีที่ไม่ได้เปิด Server Backend) */
+          /* คำแนะนำมาตรฐานเมื่อไม่ได้ตั้งค่า API หรือเชื่อมต่อไม่ได้ */
           <ul className="space-y-4">
             <li className="flex gap-3 rounded-xl bg-amber-50 p-4">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
