@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Patient } from '../../../types';
-import { calculateBMI, evaluateMalaRisk } from '../../../utils/riskEngine';
+import { calculateBMI, calculateMalaRiskScore, getMalaRiskLevel } from '../../../utils/riskEngine';
+import { assessMetforminDose, parseMetforminDoseMg } from '../../../utils/metforminGuideline';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -71,6 +72,11 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
   const [editHeight, setEditHeight] = useState<number>(0);
   const [editDehydration, setEditDehydration] = useState<boolean>(false);
   const [editAlcohol, setEditAlcohol] = useState<boolean>(false);
+  const [editBingeDrinking, setEditBingeDrinking] = useState(false);
+  const [editHighWeeklyAlcohol, setEditHighWeeklyAlcohol] = useState(false);
+  const [editPoorIntake, setEditPoorIntake] = useState(false);
+  const [editPainMedication, setEditPainMedication] = useState(false);
+  const [editSupplementOrHerbal, setEditSupplementOrHerbal] = useState(false);
 
   // สั่งจ่ายยาครั้งถัดไป
   const [orderType, setOrderType] = useState<OrderType>('REDUCE');
@@ -85,6 +91,11 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
     setEditHeight(Math.round((patient.height || 1.6) * 100));
     setEditDehydration(!!patient.hasDehydration);
     setEditAlcohol(!!patient.hasAlcohol);
+    setEditBingeDrinking(!!patient.bingeDrinking);
+    setEditHighWeeklyAlcohol(!!patient.highWeeklyAlcohol);
+    setEditPoorIntake(!!patient.poorIntake);
+    setEditPainMedication(!!patient.painMedication);
+    setEditSupplementOrHerbal(!!patient.supplementOrHerbal);
   };
 
   const handleOpenDetail = (patient: Patient) => {
@@ -108,7 +119,9 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
   const handleSaveEdit = () => {
     if (!currentPatient) return;
     const newBmi = calculateBMI(editWeight, editHeight / 100);
-    const { risk, cpg } = evaluateMalaRisk(currentPatient.egfr, editDehydration, editAlcohol);
+    const score = calculateMalaRiskScore(currentPatient.egfr, newBmi, editBingeDrinking || editHighWeeklyAlcohol);
+    const risk = getMalaRiskLevel(score);
+    const cpg = score >= 2 ? 'คะแนนตั้งแต่ 2 ขึ้นไป: เฝ้าระวังใกล้ชิดและทบทวนการรักษาตาม CPG' : 'คะแนนต่ำกว่า 2: ติดตามตาม CPG';
 
     const updated: Patient = {
       ...currentPatient,
@@ -117,6 +130,12 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
       bmi: newBmi,
       hasDehydration: editDehydration,
       hasAlcohol: editAlcohol,
+      bingeDrinking: editBingeDrinking,
+      highWeeklyAlcohol: editHighWeeklyAlcohol,
+      poorIntake: editPoorIntake,
+      painMedication: editPainMedication,
+      supplementOrHerbal: editSupplementOrHerbal,
+      riskScore: score,
       riskLevel: risk,
       cpgGuideline: cpg,
       updatedAt: 'อัปเดตข้อมูลหน้างานล่าสุด',
@@ -302,8 +321,15 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
   const calculatedBmi =
     editWeight && editHeight ? calculateBMI(editWeight, editHeight / 100) : currentPatient.bmi;
   const orderHistoryList = currentPatient.doctorOrder ? currentPatient.doctorOrder.split(';;;') : [];
-  const isHighRisk = currentPatient.riskLevel === 'Red';
   const tone = egfrTone(currentPatient.egfr);
+  const currentScore = currentPatient.riskScore ?? calculateMalaRiskScore(
+    currentPatient.egfr,
+    currentPatient.bmi ?? 0,
+    !!(currentPatient.bingeDrinking || currentPatient.highWeeklyAlcohol),
+  );
+  const doseAssessment = assessMetforminDose(currentPatient.egfr, parseMetforminDoseMg(currentPatient.metforminDose));
+  const isAtRisk = currentScore >= 2;
+  const riskLabel = currentPatient.riskLevel === 'Red' ? 'ส่งต่อแพทย์' : isAtRisk ? 'เข้าเกณฑ์เสี่ยง' : 'ต่ำกว่าเกณฑ์';
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12 font-sans text-sm text-zinc-900">
@@ -337,11 +363,11 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
 
         <span
           className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium ${
-            isHighRisk ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+          currentPatient.riskLevel === 'Red' ? 'bg-red-50 text-red-700' : isAtRisk ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
           }`}
         >
-          <span className={`h-2 w-2 rounded-full ${isHighRisk ? 'bg-red-500' : 'bg-amber-500'}`} />
-          {isHighRisk ? 'เสี่ยงสูง' : 'เสี่ยงปานกลาง'}
+          <span className={`h-2 w-2 rounded-full ${currentPatient.riskLevel === 'Red' ? 'bg-red-500' : isAtRisk ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+          {riskLabel} · {currentScore} คะแนน
         </span>
       </header>
 
@@ -422,26 +448,20 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
 
             {!isEditing ? (
               <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-                <div>
-                  <dt className="text-xs text-zinc-500">น้ำหนัก</dt>
-                  <dd className="font-medium">{currentPatient.weight} กก.</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-zinc-500">ส่วนสูง</dt>
-                  <dd className="font-medium">{Math.round(currentPatient.height * 100)} ซม.</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-zinc-500">ภาวะขาดน้ำ / ท้องเสีย</dt>
-                  <dd className={`font-medium ${currentPatient.hasDehydration ? 'text-red-600' : ''}`}>
-                    {currentPatient.hasDehydration ? 'มี' : 'ไม่มี'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-zinc-500">ดื่มแอลกอฮอล์</dt>
-                  <dd className={`font-medium ${currentPatient.hasAlcohol ? 'text-red-600' : ''}`}>
-                    {currentPatient.hasAlcohol ? 'มี' : 'ไม่มี'}
-                  </dd>
-                </div>
+                {[
+                  ['น้ำหนัก', `${currentPatient.weight ?? '—'} กก.`],
+                  ['ส่วนสูง', `${Math.round(currentPatient.height * 100)} ซม.`],
+                  ['ประวัติดื่มแอลกอฮอล์', currentPatient.hasAlcohol ? 'มี' : 'ไม่มี'],
+                  ['ดื่มหนักใน 2 ชั่วโมง', currentPatient.bingeDrinking ? 'มี' : 'ไม่มี'],
+                  ['ดื่มเกินเกณฑ์ต่อสัปดาห์', currentPatient.highWeeklyAlcohol ? 'มี' : 'ไม่มี'],
+                  ['อาเจียนหรือท้องเสีย', currentPatient.hasDehydration ? 'มี' : 'ไม่มี'],
+                  ['กินอาหารได้น้อย 1–2 วัน', currentPatient.poorIntake ? 'มี' : 'ไม่มี'],
+                  ['ยาแก้ปวด/แก้อักเสบ/ยาชุด', currentPatient.painMedication ? 'มี' : 'ไม่มี'],
+                  ['สมุนไพร/อาหารเสริม', currentPatient.supplementOrHerbal ? 'มี' : 'ไม่มี'],
+                ].map(([label, value]) => <div key={label}>
+                  <dt className="text-xs text-zinc-500">{label}</dt>
+                  <dd className={`font-medium ${value === 'มี' ? 'text-amber-700' : ''}`}>{value}</dd>
+                </div>)}
               </dl>
             ) : (
               <div className="space-y-4">
@@ -471,8 +491,13 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
 
                 <div className="space-y-2">
                   {[
-                    { label: 'มีภาวะขาดน้ำ / ท้องเสีย', checked: editDehydration, set: setEditDehydration },
                     { label: 'มีประวัติดื่มแอลกอฮอล์', checked: editAlcohol, set: setEditAlcohol },
+                    { label: 'ดื่มหนักใน 2 ชั่วโมง', checked: editBingeDrinking, set: setEditBingeDrinking },
+                    { label: 'ดื่มเกินเกณฑ์ต่อสัปดาห์', checked: editHighWeeklyAlcohol, set: setEditHighWeeklyAlcohol },
+                    { label: 'อาเจียนหรือท้องเสีย', checked: editDehydration, set: setEditDehydration },
+                    { label: 'ทานอาหารไม่ได้/ได้น้อย 1–2 วัน', checked: editPoorIntake, set: setEditPoorIntake },
+                    { label: 'ใช้ยาแก้ปวด/แก้อักเสบ/ยาชุด', checked: editPainMedication, set: setEditPainMedication },
+                    { label: 'ใช้ยาต้ม/สมุนไพร/อาหารเสริม', checked: editSupplementOrHerbal, set: setEditSupplementOrHerbal },
                   ].map((c) => (
                     <label
                       key={c.label}
@@ -494,10 +519,20 @@ export const MyPatientsTab: React.FC<MyPatientsTabProps> = ({
 
           {/* ผลประเมินความเสี่ยง */}
           <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5">
-            <h3 className="font-semibold">ผลประเมิน MALA Risk</h3>
-            <p className="leading-relaxed text-zinc-600">
-              ผู้ป่วยมีภาวะไตเสื่อมและมีปัจจัยเสี่ยง เสี่ยงเกิดภาวะเลือดเป็นกรด (Lactic Acidosis)
-            </p>
+            <h3 className="font-semibold">ผลคัดกรอง MALA</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-zinc-50 p-3">
+                <p className="text-xs text-zinc-500">Part 1 · ความเหมาะสมของขนาดยา</p>
+                <p className="mt-1 font-semibold">{doseAssessment.title}</p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-500">{doseAssessment.detail}</p>
+              </div>
+              <div className={`rounded-xl p-3 ${currentScore >= 2 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+                <p className="text-xs text-zinc-500">Part 2 · คะแนนความเสี่ยง</p>
+                <p className="mt-1 text-lg font-semibold">{currentScore} คะแนน {currentScore >= 2 ? '· เข้าเกณฑ์เสี่ยง' : '· ต่ำกว่าเกณฑ์'}</p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-500">eGFR &lt;60 = 1 · BMI &lt;23 = 2 · ดื่มหนัก = 2</p>
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-zinc-500">Part 3–4: ตรวจดูคำตอบปัจจัยกระตุ้นในข้อมูลหน้างานด้านบน</p>
 
             {currentPatient.nurseNote && (
               <div className="flex gap-3 rounded-xl bg-zinc-50 p-3.5">

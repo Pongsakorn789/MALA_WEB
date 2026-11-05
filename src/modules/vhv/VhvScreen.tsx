@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { Patient } from '../../types';
-import { calculateBMI, evaluateMalaRisk } from '../../utils/riskEngine';
+import { calculateBMI, calculateMalaRiskScore, getMalaRiskLevel } from '../../utils/riskEngine';
+import { assessMetforminDose, parseMetforminDoseMg } from '../../utils/metforminGuideline';
 import { MapPin, ArrowLeft, LogOut } from 'lucide-react';
 import logo from '../../assets/logo.png';
 
@@ -38,8 +39,13 @@ export const VhvScreen: React.FC<VhvScreenProps> = ({ patients, onUpdatePatient,
 
   const [weightInput, setWeightInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
-  const [alcoholLevel, setAlcoholLevel] = useState<AlcoholLevel>('occasional');
+  const [alcoholLevel, setAlcoholLevel] = useState<AlcoholLevel>('none');
+  const [bingeDrinking, setBingeDrinking] = useState(false);
+  const [highWeeklyAlcohol, setHighWeeklyAlcohol] = useState(false);
   const [hasDehydration, setHasDehydration] = useState(false);
+  const [poorIntake, setPoorIntake] = useState(false);
+  const [painMedication, setPainMedication] = useState(false);
+  const [supplementOrHerbal, setSupplementOrHerbal] = useState(false);
   const [submittedRisk, setSubmittedRisk] = useState<{ risk: string; cpg: string; score: number } | null>(null);
 
   const currentPatient = patients.find((p) => p.id === selectedPatientId) || patients[0];
@@ -65,19 +71,15 @@ export const VhvScreen: React.FC<VhvScreenProps> = ({ patients, onUpdatePatient,
 
   const handleFinalSubmit = () => {
     if (!currentPatient) return;
-    const { risk, cpg } = evaluateMalaRisk(currentPatient.egfr, hasDehydration, alcoholLevel !== 'none');
+    const riskyAlcohol = alcoholLevel === 'drinking' && (bingeDrinking || highWeeklyAlcohol);
+    const score = calculateMalaRiskScore(currentPatient.egfr, bmi, riskyAlcohol);
+    const risk = getMalaRiskLevel(score);
+    const cpg = score >= 2
+      ? 'คะแนนตั้งแต่ 2 ขึ้นไป: เฝ้าระวังใกล้ชิด ทบทวนขนาดยาหรือการหยุด Metformin โดยแพทย์ และให้คำแนะนำงดเหล้า/กฎวันป่วยตามปัจจัยที่พบ'
+      : 'คะแนนต่ำกว่า 2: ให้คำแนะนำตาม CPG และติดตามตามปกติ';
 
     const now = new Date();
     const formattedDate = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    let score = 30;
-    if (currentPatient.egfr < 45) score += 25;
-    if (bmi > 0 && bmi < 22) score += 10;
-    if (alcoholLevel === 'occasional') score += 12;
-    if (alcoholLevel === 'regular' || alcoholLevel === 'heavy') score += 25;
-    if (hasDehydration) score += 15;
-
-    const isHighRisk = risk === 'Red' || score >= 60;
 
     const updatedPatient: Patient = {
       ...currentPatient,
@@ -85,7 +87,13 @@ export const VhvScreen: React.FC<VhvScreenProps> = ({ patients, onUpdatePatient,
       bmi,
       hasDehydration,
       hasAlcohol: alcoholLevel !== 'none',
-      riskLevel: isHighRisk ? 'Red' : risk,
+      bingeDrinking: alcoholLevel === 'drinking' && bingeDrinking,
+      highWeeklyAlcohol: alcoholLevel === 'drinking' && highWeeklyAlcohol,
+      poorIntake,
+      painMedication,
+      supplementOrHerbal,
+      riskScore: score,
+      riskLevel: risk,
       cpgGuideline: cpg,
       screenedBy: 'เจ้าหน้าที่ รพ.สต. ท่าสาย',
       // ✅ ตั้งต้นเป็น Screened ยังไม่ส่งเข้าคิวหมอ จนกว่าจะกดส่งในหน้าผลลัพธ์
@@ -93,16 +101,27 @@ export const VhvScreen: React.FC<VhvScreenProps> = ({ patients, onUpdatePatient,
       updatedAt: formattedDate,
     };
 
+    // Part 1 dosage criterion can independently require prescriber review.
+    const doseAssessment = assessMetforminDose(currentPatient.egfr, parseMetforminDoseMg(currentPatient.metforminDose));
+    if (doseAssessment.status !== 'within-range') {
+      updatedPatient.nurseNote = `${doseAssessment.title}: ${doseAssessment.detail}`;
+    }
+
     onUpdatePatient(updatedPatient);
-    setSubmittedRisk({ risk: isHighRisk ? 'Red' : risk, cpg, score });
+    setSubmittedRisk({ risk, cpg, score });
     goTo('result');
   };
   const resetWizard = () => {
     setStep('hn');
     setWeightInput('');
     setHeightInput('');
-    setAlcoholLevel('occasional');
+    setAlcoholLevel('none');
+    setBingeDrinking(false);
+    setHighWeeklyAlcohol(false);
     setHasDehydration(false);
+    setPoorIntake(false);
+    setPainMedication(false);
+    setSupplementOrHerbal(false);
     setSubmittedRisk(null);
   };
 
@@ -179,9 +198,20 @@ export const VhvScreen: React.FC<VhvScreenProps> = ({ patients, onUpdatePatient,
           {step === 'risk' && (
             <Step4RiskFactors
               alcoholLevel={alcoholLevel}
+              bingeDrinking={bingeDrinking}
+              highWeeklyAlcohol={highWeeklyAlcohol}
               hasDehydration={hasDehydration}
+              poorIntake={poorIntake}
+              painMedication={painMedication}
+              supplementOrHerbal={supplementOrHerbal}
               onSelectAlcohol={setAlcoholLevel}
+              onToggleBingeDrinking={setBingeDrinking}
+              onToggleHighWeeklyAlcohol={setHighWeeklyAlcohol}
               onToggleDehydration={setHasDehydration}
+              onTogglePoorIntake={setPoorIntake}
+              onTogglePainMedication={setPainMedication}
+              onToggleSupplementOrHerbal={setSupplementOrHerbal}
+              isFemale={currentPatient?.gender === 'หญิง' || currentPatient?.gender === 'Female'}
             />
           )}
 
@@ -193,6 +223,11 @@ export const VhvScreen: React.FC<VhvScreenProps> = ({ patients, onUpdatePatient,
               bmi={bmi}
               alcoholLevel={alcoholLevel}
               hasDehydration={hasDehydration}
+              bingeDrinking={bingeDrinking}
+              highWeeklyAlcohol={highWeeklyAlcohol}
+              poorIntake={poorIntake}
+              painMedication={painMedication}
+              supplementOrHerbal={supplementOrHerbal}
             />
           )}
 
@@ -201,7 +236,7 @@ export const VhvScreen: React.FC<VhvScreenProps> = ({ patients, onUpdatePatient,
       patient={currentPatient}
       risk={submittedRisk.risk}
       cpg={submittedRisk.cpg}
-      riskScore={submittedRisk.score}
+              riskScore={submittedRisk.score}
       onReset={resetWizard}
       onEscalateToDoctor={() => {
         // ✅ เมื่อเจ้าหน้าที่กดปุ่มส่งใน LINE Card ถึงจะเปลี่ยนเป็น Escalated ส่งเข้าคิวหมอ

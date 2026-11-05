@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Patient } from '../../../types';
+import { assessMetforminDose, parseMetforminDoseMg } from '../../../utils/metforminGuideline';
 import {
   AlertTriangle,
   ArrowRight,
@@ -22,18 +23,33 @@ interface Step6ResultProps {
   onEscalateToDoctor?: () => void;
 }
 
-const THRESHOLD = 60;
-
 export const Step6Result: React.FC<Step6ResultProps> = ({
   patient,
   risk,
+  cpg,
   riskScore,
   onReset,
   onEscalateToDoctor,
 }) => {
   const [lineSent, setLineSent] = useState(false);
   const [doctorSent, setDoctorSent] = useState(patient.status === 'Escalated');
-  const isHighRisk = risk === 'Red' || riskScore >= THRESHOLD;
+  const isAtRisk = riskScore >= 2;
+  const metforminDoseMg = parseMetforminDoseMg(patient.metforminDose);
+  const doseAssessment = assessMetforminDose(patient.egfr, metforminDoseMg);
+  const needsClinicalReview = isAtRisk || doseAssessment.status !== 'within-range';
+  const part3Triggers = [
+    { label: 'อาเจียนหรือท้องเสีย', yes: !!patient.hasDehydration },
+    { label: 'กินอาหารได้น้อย 1–2 วัน', yes: !!patient.poorIntake },
+  ];
+  const part4Triggers = [
+    { label: 'ใช้ยาแก้ปวด/แก้อักเสบ/ยาชุด', yes: !!patient.painMedication },
+    { label: 'ใช้ยาต้ม/สมุนไพร/อาหารเสริม', yes: !!patient.supplementOrHerbal },
+  ];
+  const scoreFactors = [
+    { label: 'eGFR < 60', points: patient.egfr < 60 ? 1 : 0 },
+    { label: 'BMI < 23', points: patient.bmi !== undefined && patient.bmi > 0 && patient.bmi < 23 ? 2 : 0 },
+    { label: 'ดื่มหนักตามเกณฑ์ข้อ 9', points: patient.bingeDrinking || patient.highWeeklyAlcohol ? 2 : 0 },
+  ];
 
   // State สำหรับดึงคำแนะนำจาก Hugging Face AIผ่าน FastAPI Backend
   const [aiRecommendation, setAiRecommendation] = useState<string | null>(null);
@@ -51,11 +67,13 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
         body: JSON.stringify({
           age: patient.age,
           egfr: patient.egfr,
-          weight: patient.weight || 60,
-          bmi: patient.bmi || 22,
-          hasDehydration: !!patient.hasDehydration,
-          hasAlcohol: !!patient.hasAlcohol,
-          metforminDose: patient.metforminDose || '2 เม็ด/วัน (1,000 มก.)',
+          metforminDose: metforminDoseMg ?? 0,
+          hasBingeDrinking: !!patient.bingeDrinking,
+          hasChronicAlcohol: !!patient.highWeeklyAlcohol,
+          hasVomitingDiarrhea: !!patient.hasDehydration,
+          hasFasting: !!patient.poorIntake,
+          hasPainkillers: !!patient.painMedication,
+          hasHerbsSupplements: !!patient.supplementOrHerbal,
         }),
       });
 
@@ -84,57 +102,58 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
     onEscalateToDoctor?.();
   };
 
-  const accent = isHighRisk
-    ? { text: 'text-red-600', bar: 'bg-red-500', soft: 'bg-red-50 text-red-700' }
-    : { text: 'text-emerald-700', bar: 'bg-emerald-600', soft: 'bg-emerald-50 text-emerald-700' };
-
-  const barWidth = Math.max(0, Math.min(100, riskScore));
+  const accent = isAtRisk
+    ? { text: 'text-amber-700', soft: 'bg-amber-50 text-amber-800', border: 'border-amber-200' }
+    : { text: 'text-emerald-700', soft: 'bg-emerald-50 text-emerald-700', border: 'border-emerald-200' };
+  const doseTone = doseAssessment.status === 'contraindicated'
+    ? 'border-red-200 bg-red-50 text-red-800'
+    : doseAssessment.status === 'review'
+      ? 'border-amber-200 bg-amber-50 text-amber-900'
+      : 'border-emerald-200 bg-emerald-50 text-emerald-900';
 
   return (
     <div className="space-y-5 font-sans text-sm text-zinc-900">
-      {/* 1. คะแนนความเสี่ยง MALA */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xs">
+      <section className={`rounded-2xl border p-5 shadow-xs ${doseTone}`}>
+        <p className="text-xs font-semibold uppercase tracking-wide opacity-70">Part 1 · ความเหมาะสมของขนาดยา</p>
+        <h2 className="mt-2 text-lg font-semibold">{doseAssessment.title}</h2>
+        <p className="mt-1 leading-relaxed">{doseAssessment.detail}</p>
+        <p className="mt-2 text-xs opacity-70">ขนาดยาที่บันทึก: {metforminDoseMg === null ? 'อ่านค่าไม่ได้' : `${metforminDoseMg.toLocaleString()} มก./วัน`} · eGFR {patient.egfr} mL/min/1.73 m²</p>
+      </section>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-zinc-500">คะแนนความเสี่ยง MALA</p>
-            <p className={`mt-1 font-mono text-5xl font-semibold tracking-tight ${accent.text}`}>
-              {riskScore}
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Part 2 · ความเสี่ยงต่อ MALA</p>
+            <h2 className={`mt-2 text-lg font-semibold ${accent.text}`}>{risk === 'Yellow' ? 'เข้าเกณฑ์เสี่ยงต่อ MALA' : 'ยังไม่เข้าเกณฑ์เสี่ยงจากคะแนน'}</h2>
           </div>
-          <span className={`rounded-full px-3 py-1 text-[13px] font-medium ${accent.soft}`}>
-            {isHighRisk ? 'ความเสี่ยงสูง' : 'เฝ้าระวัง'}
-          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${accent.soft}`}>{riskScore} คะแนน</span>
         </div>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">เกณฑ์ตามตาราง: คะแนนตั้งแต่ 2 ขึ้นไปถือว่าเสี่ยง</p>
+        <ul className="mt-3 space-y-1.5 text-xs text-zinc-600">
+          {scoreFactors.map((factor) => <li key={factor.label} className="flex justify-between"><span>{factor.label}</span><span>{factor.points} คะแนน</span></li>)}
+        </ul>
+        {isAtRisk && <p className="mt-3 text-xs leading-relaxed text-amber-800">{cpg}</p>}
+        <p className="mt-2 text-xs text-zinc-400">รวมสูงสุด 5 คะแนน · BMI {patient.bmi ?? '—'} · อายุ {patient.age} ปี</p>
+      </section>
 
-        {/* แถบคะแนน + เส้นเกณฑ์ */}
-        <div className="relative mt-5">
-          <div
-            className="h-2 overflow-hidden rounded-full bg-zinc-100"
-            role="progressbar"
-            aria-valuenow={riskScore}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="คะแนนความเสี่ยง MALA"
-          >
-            <div className={`h-full rounded-full ${accent.bar}`} style={{ width: `${barWidth}%` }} />
-          </div>
-          <div
-            className="absolute -top-1 h-4 w-px bg-zinc-400"
-            style={{ left: `${THRESHOLD}%` }}
-            aria-hidden
-          />
-          <p
-            className="absolute mt-1 -translate-x-1/2 text-[11px] text-zinc-400"
-            style={{ left: `${THRESHOLD}%` }}
-          >
-            เกณฑ์ {THRESHOLD}
-          </p>
-        </div>
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
+        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Part 3 · อาการกระตุ้นและ Sick Day Rules</p>
+        <ul className="mt-3 divide-y divide-zinc-100">
+          {part3Triggers.map((trigger) => <li key={trigger.label} className="flex items-center justify-between gap-3 py-2.5">
+            <span className={trigger.yes ? 'font-medium text-zinc-900' : 'text-zinc-500'}>{trigger.label}</span>
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${trigger.yes ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}`}>{trigger.yes ? 'พบ' : 'ไม่พบ'}</span>
+          </li>)}
+        </ul>
+      </section>
 
-        <p className="mt-9 text-[13px] leading-relaxed text-zinc-600">
-          {isHighRisk ? 'เกินเกณฑ์ที่กำหนด · ' : ''}eGFR {patient.egfr} mL/min · อายุ {patient.age} ปี
-          {patient.hasAlcohol && ' · ดื่มแอลกอฮอล์'}
-        </p>
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
+        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Part 4 · ปัจจัยกระตุ้น AKI/ทบทวนยา</p>
+        <ul className="mt-3 divide-y divide-zinc-100">
+          {part4Triggers.map((trigger) => <li key={trigger.label} className="flex items-center justify-between gap-3 py-2.5">
+            <span className={trigger.yes ? 'font-medium text-zinc-900' : 'text-zinc-500'}>{trigger.label}</span>
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${trigger.yes ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}`}>{trigger.yes ? 'พบ' : 'ไม่พบ'}</span>
+          </li>)}
+        </ul>
       </section>
 
       {/* 2. คำแนะนำสำหรับผู้ป่วย (วิเคราะห์โดย Hugging Face AI) */}
@@ -203,8 +222,8 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
         )}
       </section>
 
-      {/* 3. การจัดการเคสเสี่ยงสูง */}
-      {isHighRisk && (
+      {/* การจัดการตามคะแนน Part 2 หรือเกณฑ์ยา Part 1 */}
+      {needsClinicalReview && (
         <section className="space-y-3">
           <h3 className="px-1 font-semibold">ขั้นตอนต่อไป</h3>
 
@@ -260,8 +279,8 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
             {/* ตัวอย่างข้อความที่จะส่ง */}
             <div className="rounded-xl bg-zinc-50 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-[13px] font-semibold text-red-600">แจ้งเตือนความเสี่ยงสูง (MALA)</span>
-                <span className="font-mono text-xs font-semibold text-red-700">Score {riskScore}</span>
+                <span className="text-[13px] font-semibold text-amber-700">ผลคัดกรอง MALA</span>
+                <span className="text-xs font-semibold text-amber-800">คะแนน {riskScore} / 5</span>
               </div>
               <dl className="mt-2.5 space-y-1 text-[13px] text-zinc-700">
                 <div className="flex gap-2">

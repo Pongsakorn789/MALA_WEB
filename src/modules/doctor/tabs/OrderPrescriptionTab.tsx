@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import type { Patient } from '../../../types';
+import { calculateMalaRiskScore } from '../../../utils/riskEngine';
+import { assessMetforminDose, parseMetforminDoseMg } from '../../../utils/metforminGuideline';
 import { CheckCircle2, FileText, Minus, Plus, Send, UserCheck } from 'lucide-react';
 
 interface OrderPrescriptionTabProps {
@@ -37,6 +39,12 @@ export const OrderPrescriptionTab: React.FC<OrderPrescriptionTabProps> = ({
     'ให้คนไข้ดื่มน้ำเกลือแร่ เฝ้าระวังอาการขาดน้ำ และนัดเจาะเลือดซ้ำสัปดาห์หน้า'
   );
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const riskScore = patient.riskScore ?? calculateMalaRiskScore(
+    patient.egfr,
+    patient.bmi ?? 0,
+    !!(patient.bingeDrinking || patient.highWeeklyAlcohol),
+  );
+  const doseAssessment = assessMetforminDose(patient.egfr, parseMetforminDoseMg(patient.metforminDose));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,22 +76,28 @@ export const OrderPrescriptionTab: React.FC<OrderPrescriptionTabProps> = ({
 
   const riskSummary: { text: string; warn: boolean }[] = [
     {
-      text: `ภาวะไตเสื่อม (eGFR ล่าสุด ${patient.egfr} mL/min/1.73m²)`,
-      warn: true,
+      text: `Part 2: eGFR ${patient.egfr} mL/min/1.73m² (${patient.egfr < 60 ? '1 คะแนน' : '0 คะแนน'})`,
+      warn: patient.egfr < 60,
     },
     {
-      text: patient.hasDehydration
-        ? 'ตรวจพบภาวะขาดน้ำ/ท้องเสียหน้างาน เสี่ยง Lactic Acidosis ฉับพลัน'
-        : 'ไม่มีภาวะขาดน้ำ',
-      warn: !!patient.hasDehydration,
+      text: `Part 2: BMI ${patient.bmi ?? '—'} (${patient.bmi != null && patient.bmi > 0 && patient.bmi < 23 ? '2 คะแนน' : '0 คะแนน'})`,
+      warn: patient.bmi != null && patient.bmi > 0 && patient.bmi < 23,
     },
     {
-      text: patient.hasAlcohol ? 'มีประวัติดื่มเครื่องดื่มแอลกอฮอล์' : 'ไม่มีประวัติดื่มแอลกอฮอล์',
-      warn: !!patient.hasAlcohol,
+      text: `Part 2: ดื่มหนักตามเกณฑ์ข้อ 9 (${patient.bingeDrinking || patient.highWeeklyAlcohol ? '2 คะแนน' : '0 คะแนน'})`,
+      warn: !!(patient.bingeDrinking || patient.highWeeklyAlcohol),
     },
     {
-      text: `ปัจจุบันรับประทาน Metformin ${patient.metforminDose || '2 เม็ด/วัน (1,000 มก.)'}`,
-      warn: false,
+      text: `Part 3: อาเจียน/ท้องเสีย ${patient.hasDehydration ? 'พบ' : 'ไม่พบ'} · กินอาหารได้น้อย ${patient.poorIntake ? 'พบ' : 'ไม่พบ'}`,
+      warn: !!(patient.hasDehydration || patient.poorIntake),
+    },
+    {
+      text: `Part 4: ยาแก้ปวด/ยาแก้อักเสบ/ยาชุด ${patient.painMedication ? 'พบ' : 'ไม่พบ'} · สมุนไพร/อาหารเสริม ${patient.supplementOrHerbal ? 'พบ' : 'ไม่พบ'}`,
+      warn: !!(patient.painMedication || patient.supplementOrHerbal),
+    },
+    {
+      text: `ขนาดยาเดิม ${patient.metforminDose || 'ไม่ระบุ'} · Part 1: ${doseAssessment.title}`,
+      warn: doseAssessment.status !== 'within-range',
     },
   ];
 
@@ -93,9 +107,9 @@ export const OrderPrescriptionTab: React.FC<OrderPrescriptionTabProps> = ({
       <div role="alert" className="flex items-start gap-3 rounded-2xl bg-red-50 px-5 py-4">
         <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" aria-hidden />
         <div>
-          <p className="font-semibold text-red-900">เคสส่งต่อจาก รพ.สต. บ้านดอน</p>
+          <p className="font-semibold text-red-900">เคสส่งต่อจาก {patient.screenedBy || 'รพ.สต.'}</p>
           <p className="mt-0.5 text-red-800/80">
-            ผู้ป่วยมีความเสี่ยง MALA ระดับสูง กรุณาพิจารณาปรับขนาดยา Metformin
+            Part 2 ได้ {riskScore} คะแนน (เกณฑ์เสี่ยงตั้งแต่ 2 คะแนน) · ตรวจ Part 1 และปัจจัยกระตุ้นก่อนสั่งการรักษา
           </p>
         </div>
       </div>
@@ -176,8 +190,8 @@ export const OrderPrescriptionTab: React.FC<OrderPrescriptionTabProps> = ({
           {/* สรุปสาเหตุความเสี่ยง */}
           <section className="rounded-2xl border border-zinc-200 bg-white p-5">
             <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h3 className="font-semibold">สรุปสาเหตุความเสี่ยง</h3>
-              <span className="text-xs text-zinc-400">สร้างโดย AI</span>
+                <h3 className="font-semibold">ผลคัดกรองและปัจจัยที่พบ</h3>
+              <span className="text-xs text-zinc-400">จากข้อมูล รพ.สต.</span>
             </div>
             <ul className="space-y-2.5">
               {riskSummary.map((item) => (

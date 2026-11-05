@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { Patient } from '../../../types';
+import { calculateMalaRiskScore } from '../../../utils/riskEngine';
 import { CheckCircle2, ChevronRight } from 'lucide-react';
 
 interface OverviewTabProps {
@@ -136,11 +137,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ patients, onSelectPati
                         </span>
                         <span aria-hidden>·</span>
                         <span>ทานยา {p.metforminDose}</span>
-                        {p.hasDehydration && (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                            ขาดน้ำ
-                          </span>
-                        )}
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                          Part 2 {p.riskScore ?? calculateMalaRiskScore(p.egfr, p.bmi ?? 0, !!(p.bingeDrinking || p.highWeeklyAlcohol))} คะแนน
+                        </span>
+                        {(p.hasDehydration || p.poorIntake) && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Sick Day trigger</span>}
+                        {(p.painMedication || p.supplementOrHerbal) && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">ทบทวนยา/อาหารเสริม</span>}
                       </p>
                     </div>
 

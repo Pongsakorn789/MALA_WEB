@@ -1,15 +1,16 @@
 import React from 'react';
-import { BarChart2, Users, Settings } from 'lucide-react';
+import { BarChart2, Users, Settings, FileBarChart } from 'lucide-react';
 import logo from '../../../assets/logo.png';
 
 interface DoctorSidebarProps {
-  currentTab: 'overview' | 'patients' | 'prescribe' | 'settings';
-  onSelectTab: (tab: 'overview' | 'patients' | 'prescribe' | 'settings') => void;
+  currentTab: 'overview' | 'patients' | 'prescribe' | 'reports' | 'settings';
+  onSelectTab: (tab: 'overview' | 'patients' | 'prescribe' | 'reports' | 'settings') => void;
 }
 
 const NAV_ITEMS = [
   { key: 'overview' as const, label: 'ภาพรวม', icon: BarChart2 },
   { key: 'patients' as const, label: 'คนไข้ของฉัน', icon: Users },
+  { key: 'reports' as const, label: 'รายงาน', icon: FileBarChart },
 
   { key: 'settings' as const, label: 'ตั้งค่า', icon: Settings },
 ];

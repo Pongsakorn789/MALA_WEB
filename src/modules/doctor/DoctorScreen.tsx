@@ -6,6 +6,7 @@ import { OverviewTab } from './tabs/OverviewTab';
 import { MyPatientsTab } from './tabs/MyPatientsTab';
 import { OrderPrescriptionTab } from './tabs/OrderPrescriptionTab';
 import { DoctorSettingsTab } from './tabs/DoctorSettingsTab';
+import { ReportsTab } from '../shph/tabs/ReportsTab';
 
 interface DoctorScreenProps {
   patients: Patient[];
@@ -14,7 +15,7 @@ interface DoctorScreenProps {
   onLogout: () => void;
 }
 
-type DoctorTab = 'overview' | 'patients' | 'prescribe' | 'settings';
+type DoctorTab = 'overview' | 'patients' | 'prescribe' | 'reports' | 'settings';
 
 export const DoctorScreen: React.FC<DoctorScreenProps> = ({
   patients,
@@ -76,6 +77,8 @@ export const DoctorScreen: React.FC<DoctorScreenProps> = ({
               onUpdatePatient={onUpdatePatient}
             />
           )}
+
+          {currentTab === 'reports' && <ReportsTab patients={patients} />}
 
           {currentTab === 'prescribe' && currentPrescribePatient && (
             <OrderPrescriptionTab

@@ -13,6 +13,12 @@ export interface Patient {
   metforminDose: string;
   hasDehydration: boolean;
   hasAlcohol: boolean;
+  riskScore?: number;
+  bingeDrinking?: boolean;
+  highWeeklyAlcohol?: boolean;
+  poorIntake?: boolean;
+  painMedication?: boolean;
+  supplementOrHerbal?: boolean;
   riskLevel: RiskLevel;
   screenedBy?: string;
   cpgGuideline?: string;
