@@ -4,11 +4,7 @@ import { assessMetforminDose, parseMetforminDoseMg } from '../../../utils/metfor
 import {
   AlertTriangle,
   ArrowRight,
-  CheckCircle2,
   HeartPulse,
-  Send,
-  Stethoscope,
-  Users,
   Wine,
   Sparkles,
   RefreshCw,
@@ -20,7 +16,6 @@ interface Step6ResultProps {
   cpg?: string;
   riskScore: number;
   onReset: () => void;
-  onEscalateToDoctor?: () => void;
 }
 
 export const Step6Result: React.FC<Step6ResultProps> = ({
@@ -29,14 +24,10 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
   cpg,
   riskScore,
   onReset,
-  onEscalateToDoctor,
 }) => {
-  const [lineSent, setLineSent] = useState(false);
-  const [doctorSent, setDoctorSent] = useState(patient.status === 'Escalated');
   const isAtRisk = riskScore >= 2;
   const metforminDoseMg = parseMetforminDoseMg(patient.metforminDose);
   const doseAssessment = assessMetforminDose(patient.egfr, metforminDoseMg);
-  const needsClinicalReview = isAtRisk || doseAssessment.status !== 'within-range';
   const part3Triggers = [
     { label: 'อาเจียนหรือท้องเสีย', yes: !!patient.hasDehydration },
     { label: 'กินอาหารได้น้อย 1–2 วัน', yes: !!patient.poorIntake },
@@ -99,13 +90,6 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
   useEffect(() => {
     fetchRecommendations();
   }, [patient]);
-
-  const handleSendLine = () => setLineSent(true);
-
-  const handleSendToDoctor = () => {
-    setDoctorSent(true);
-    onEscalateToDoctor?.();
-  };
 
   const accent = isAtRisk
     ? { text: 'text-amber-700', soft: 'bg-amber-50 text-amber-800', border: 'border-amber-200' }
@@ -227,124 +211,12 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
         )}
       </section>
 
-      {/* การจัดการตามคะแนน Part 2 หรือเกณฑ์ยา Part 1 */}
-      {needsClinicalReview && (
-        <section className="space-y-3">
-          <h3 className="px-1 font-semibold">ขั้นตอนต่อไป</h3>
-
-          {/* ส่งปรึกษาแพทย์ */}
-          <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-700">
-                <Stethoscope className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-medium">ส่งปรึกษาแพทย์ รพ.ศูนย์</p>
-                <p className="mt-0.5 leading-relaxed text-zinc-500">
-                  eGFR {patient.egfr} mL/min เสี่ยง MALA ส่งเข้าคิวตรวจเพื่อให้แพทย์พิจารณาปรับหรือหยุดยา Metformin
-                </p>
-              </div>
-            </div>
-
-            {doctorSent ? (
-              <div
-                role="status"
-                className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 font-medium text-emerald-800"
-              >
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>ส่งเข้าคิวแพทย์แล้ว · รอแพทย์สั่งยา</span>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSendToDoctor}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-700 py-3 font-medium text-white transition hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600/40 focus-visible:ring-offset-2"
-              >
-                <Send className="h-4 w-4" />
-                ส่งเคสเข้าคิวแพทย์
-              </button>
-            )}
-          </div>
-
-          {/* แจ้งเตือน LINE */}
-          <div className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#06C755] text-[10px] font-bold text-white">
-                LINE
-              </div>
-              <div className="min-w-0">
-                <p className="font-medium">แจ้งเตือนกลุ่ม MALA เครือข่าย รพ.ศูนย์</p>
-                <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
-                  <Users className="h-3 w-3" />
-                  สมาชิก 12 คน · แพทย์ เภสัชกร พยาบาล จนท. รพ.สต.
-                </p>
-              </div>
-            </div>
-
-            {/* ตัวอย่างข้อความที่จะส่ง */}
-            <div className="rounded-xl bg-zinc-50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] font-semibold text-amber-700">ผลคัดกรอง MALA</span>
-                <span className="text-xs font-semibold text-amber-800">คะแนน {riskScore} / 5</span>
-              </div>
-              <dl className="mt-2.5 space-y-1 text-[13px] text-zinc-700">
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-zinc-400">ผู้ป่วย</dt>
-                  <dd>
-                    {patient.name} (HN: {patient.citizenId})
-                  </dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-zinc-400">จุดคัดกรอง</dt>
-                  <dd>รพ.สต. ท่าสาย</dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-zinc-400">eGFR</dt>
-                  <dd>
-                    <span className="font-semibold text-red-600">{patient.egfr}</span> mL/min
-                  </dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-zinc-400">ยาเดิม</dt>
-                  <dd>{patient.metforminDose}</dd>
-                </div>
-              </dl>
-            </div>
-
-            {lineSent ? (
-              <>
-                <div
-                  role="status"
-                  className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 font-medium text-emerald-800"
-                >
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  <span>ส่งเข้ากลุ่ม LINE แล้ว</span>
-                </div>
-
-                {/* จำลองการตอบรับจากทีม */}
-                <div className="flex items-start gap-2.5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-[11px] font-semibold text-white">
-                    ภญ
-                  </div>
-                  <div className="rounded-2xl rounded-tl-sm bg-zinc-100 px-3.5 py-2.5 text-[13px]">
-                    <p className="font-medium text-sky-800">ภญ.อรุณี · ศูนย์ข้อมูลยา รพ.เชียงรายฯ</p>
-                    <p className="mt-0.5 leading-relaxed text-zinc-700">
-                      รับเรื่องค่ะ กำลังตรวจประวัติการใช้ยาอื่นและส่งต่อแพทย์พิจารณาปรับยาในระบบให้ค่ะ
-                    </p>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSendLine}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#06C755] py-3 font-medium text-white transition hover:bg-[#05a847] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06C755]/40 focus-visible:ring-offset-2"
-              >
-                <Send className="h-4 w-4" />
-                ส่งแจ้งเตือนเข้ากลุ่ม LINE
-              </button>
-            )}
-          </div>
+      {isAtRisk && (
+        <section role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <h3 className="font-semibold text-amber-950">ส่งเข้าคิวผู้ดูแลเคส MALA แล้ว</h3>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900">
+            คะแนนเข้าเกณฑ์เสี่ยง ระบบบันทึกเคสไว้ให้ผู้ดูแลติดตามผลแล้ว เคสนี้ไม่ถูกส่งเข้าคิวแพทย์จากคะแนน MALA เพียงอย่างเดียว
+          </p>
         </section>
       )}
 

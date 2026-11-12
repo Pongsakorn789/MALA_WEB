@@ -13,13 +13,13 @@ type QueueTab = 'pending' | 'completed';
 export const OverviewTab: React.FC<OverviewTabProps> = ({ patients, onSelectPatient }) => {
   const [activeQueueTab, setActiveQueueTab] = useState<QueueTab>('pending');
 
-  // 1. เคสฉุกเฉินที่ยังรอแพทย์สั่งการรักษา (ยังไม่มีคำสั่ง doctorOrder และสถานะ Escalated)
+  // คิวแพทย์รับเฉพาะเคสที่ตรวจ dose แล้วไม่ผ่านเกณฑ์
   const pendingCases = patients.filter(
-    (p) => p.riskLevel === 'Red' && p.status === 'Escalated' && !p.doctorOrder
+    (p) => p.caseType === 'DOSE_REVIEW' && p.status !== 'Resolved' && !p.doctorOrder
   );
 
   // 2. เคสที่แพทย์สั่งการรักษาและตอบกลับ รพ.สต. เรียบร้อยแล้ว
-  const completedCases = patients.filter((p) => p.doctorOrder || p.status === 'Resolved');
+  const completedCases = patients.filter((p) => p.caseType === 'DOSE_REVIEW' && (p.doctorOrder || p.status === 'Resolved'));
 
   // 3. สัดส่วนเคสที่ส่งต่อมาแล้วแพทย์ปรับยาเรียบร้อย (คำนวณจากข้อมูลจริง)
   const totalReferred = pendingCases.length + completedCases.length;
@@ -34,8 +34,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ patients, onSelectPati
   return (
     <div className="mx-auto max-w-5xl space-y-6 font-sans text-sm text-zinc-900">
       <header className="space-y-1">
-        <h2 className="text-xl font-semibold tracking-tight">ภาพรวมการเฝ้าระวัง MALA</h2>
-        <p className="text-zinc-500">เคสเสี่ยงสูงที่ส่งต่อจากเครือข่าย รพ.สต. ถึง รพ.ศูนย์</p>
+        <h2 className="text-xl font-semibold tracking-tight">คิวทบทวนขนาดยา Metformin</h2>
+        <p className="text-zinc-500">เคส dose ไม่ผ่านเกณฑ์จาก Part 1 ที่ส่งจากเครือข่าย รพ.สต. ให้แพทย์พิจารณา</p>
       </header>
 
       {/* สถิติ */}

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { User, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2 } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2, ClipboardList } from 'lucide-react';
 import logo from '../assets/logo.png';
 
 interface LoginScreenProps {
-  onLoginSuccess: (role: 'SHPH' | 'DOCTOR', username: string) => void;
+  onLoginSuccess: (role: 'SHPH' | 'DOCTOR' | 'CARE_MANAGER', username: string) => void;
 }
 
 const ROLE_PREFIXES = [
@@ -18,6 +18,12 @@ const ROLE_PREFIXES = [
     label: 'แพทย์ / ทีมสหวิชาชีพ', 
     icon: Stethoscope, 
     tint: 'text-sky-800 bg-sky-50 border-sky-300' 
+  },
+  {
+    code: 'CARE',
+    label: 'ผู้ดูแลเคส MALA',
+    icon: ClipboardList,
+    tint: 'text-amber-800 bg-amber-50 border-amber-300',
   },
 ] as const;
 
@@ -35,10 +41,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
     if (trimmedUser.startsWith('DOC')) {
       onLoginSuccess('DOCTOR', trimmedUser);
+    } else if (trimmedUser.startsWith('CARE')) {
+      onLoginSuccess('CARE_MANAGER', trimmedUser);
     } else if (trimmedUser.startsWith('SHPH') || trimmedUser.startsWith('NUR')) {
       onLoginSuccess('SHPH', trimmedUser);
     } else {
-      setErrorMessage('รหัสเจ้าหน้าที่ไม่ถูกต้อง ต้องขึ้นต้นด้วย SHPH (รพ.สต.) หรือ DOC (รพ.ศูนย์)');
+      setErrorMessage('รหัสไม่ถูกต้อง ต้องขึ้นต้นด้วย SHPH, DOC หรือ CARE');
     }
   };
 
@@ -46,7 +54,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     setUsername(code + '001');
   };
 
-  const activePrefix = username.trim().toUpperCase().slice(0, 4).startsWith('DOC') ? 'DOC' : 'SHPH';
+  const activePrefix = username.trim().toUpperCase().startsWith('CARE')
+    ? 'CARE'
+    : username.trim().toUpperCase().startsWith('DOC') ? 'DOC' : 'SHPH';
 
   return (
     <div className="min-h-screen bg-[#F5F7F4] flex flex-col justify-center items-center p-4 font-sans">
@@ -81,8 +91,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   เลือกบทบาทผู้ใช้งาน / รหัสประจำตัว
                 </label>
 
-                {/* ปุ่มเลือก 2 Roles ตามสไลด์ */}
-                <div className="grid grid-cols-2 gap-2 pt-0.5">
+                {/* เลือกบทบาทผู้ใช้งาน */}
+                <div className="grid grid-cols-3 gap-2 pt-0.5">
                   {ROLE_PREFIXES.map(({ code, label, icon: Icon, tint }) => (
                     <button
                       key={code}

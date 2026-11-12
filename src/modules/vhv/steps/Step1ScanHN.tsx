@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { Patient } from '../../../types';
+import { calculateAgeFromBirthDate } from '../../../utils/patientData';
+import { parseMetforminDoseMg } from '../../../utils/metforminGuideline';
 import {
   ArrowLeft,
   Camera,
@@ -14,8 +16,11 @@ import {
 interface Step1ScanHNProps {
   patients: Patient[];
   currentPatient?: Patient;
+  onAddPatient: (patient: Patient) => void;
+  onUpdatePatient: (patient: Patient) => void;
   onSelectPatient: (patientId: string) => void;
-  onConfirm: () => void;
+  onConfirm: (patientOverride?: Patient) => void;
+  onImportPatients: (patients: Patient[]) => Promise<{ added: number; updated: number }>;
 }
 
 const riskInfo = (level?: string) => {
@@ -58,18 +63,40 @@ const getCodeCandidates = (raw: string) => {
 export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
   patients,
   currentPatient,
+  onAddPatient,
+  onUpdatePatient,
+  onImportPatients,
   onSelectPatient,
   onConfirm,
 }) => {
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'confirmed'>('idle');
   const [scanOrigin, setScanOrigin] = useState<'camera' | 'manual' | null>(null);
   const [showManualSearch, setShowManualSearch] = useState(false);
+  const [showAddPatient, setShowAddPatient] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [visiblePatientLimit, setVisiblePatientLimit] = useState(100);
+  const [newPatientName, setNewPatientName] = useState('');
+  const [newPatientHn, setNewPatientHn] = useState('');
+  const [newPatientBirthDate, setNewPatientBirthDate] = useState('');
+  const [newPatientGender, setNewPatientGender] = useState('หญิง');
+  const [newPatientEgfr, setNewPatientEgfr] = useState('');
+  const [newPatientDose, setNewPatientDose] = useState('');
+  const [newPatientArea, setNewPatientArea] = useState('');
+  const [addPatientError, setAddPatientError] = useState('');
+  const [doseEntry, setDoseEntry] = useState('');
+  const [importArea, setImportArea] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSummary, setImportSummary] = useState('');
   const [scannerError, setScannerError] = useState('');
   const [scannedValue, setScannedValue] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
   const handledResultRef = useRef(false);
+
+  useEffect(() => {
+    setDoseEntry(String(parseMetforminDoseMg(currentPatient?.metforminDose || '') ?? ''));
+  }, [currentPatient?.id, currentPatient?.metforminDose]);
 
   useEffect(() => {
     if (scanState !== 'scanning' || !videoRef.current) return;
@@ -172,6 +199,178 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
       || normalizeCode(patient.citizenId).includes(normalizedQuery)
       || normalizeCode(patient.id).includes(normalizedQuery);
   });
+  const visiblePatients = filteredPatients.slice(0, visiblePatientLimit);
+
+  const calculatedAge = calculateAgeFromBirthDate(newPatientBirthDate);
+  const needsDoseEntry = !!currentPatient && parseMetforminDoseMg(currentPatient.metforminDose) === null;
+  const confirmPatient = () => {
+    if (!currentPatient) return;
+    if (needsDoseEntry) {
+      const dose = Number(doseEntry);
+      if (!doseEntry || !Number.isFinite(dose) || dose <= 0) {
+        setScannerError('กรุณากรอกขนาดยา Metformin ปัจจุบันเป็นมก./วันก่อนเริ่มประเมิน');
+        return;
+      }
+      const updated = { ...currentPatient, metforminDose: `${dose.toLocaleString()} มก./วัน` };
+      onUpdatePatient(updated);
+      onConfirm(updated);
+      return;
+    }
+    onConfirm(currentPatient);
+  };
+  const createPatient = (event: React.FormEvent) => {
+    event.preventDefault();
+    setAddPatientError('');
+    const hn = newPatientHn.trim();
+    if (patients.some((patient) => normalizeCode(patient.citizenId) === normalizeCode(hn))) {
+      setAddPatientError('มี HN/เลขบัตรนี้ในระบบแล้ว กรุณาค้นหาและเลือกจากรายชื่อ');
+      return;
+    }
+    if (calculatedAge === null) {
+      setAddPatientError('กรุณาตรวจสอบวันเดือนปีเกิด');
+      return;
+    }
+
+    const egfr = Number(newPatientEgfr);
+    const dose = Number(newPatientDose);
+    if (!Number.isFinite(egfr) || egfr < 0 || !Number.isFinite(dose) || dose < 0) {
+      setAddPatientError('กรุณากรอก eGFR และขนาดยาเป็นตัวเลขที่ถูกต้อง');
+      return;
+    }
+
+    const patient: Patient = {
+      id: `P-${Date.now()}`,
+      name: newPatientName.trim(),
+      citizenId: hn,
+      birthDate: newPatientBirthDate,
+      age: calculatedAge,
+      gender: newPatientGender,
+      height: 0,
+      egfr,
+      metforminDose: `${dose.toLocaleString()} มก./วัน`,
+      hasDehydration: false,
+      hasAlcohol: false,
+      riskLevel: 'Green',
+      screeningArea: newPatientArea.trim() || undefined,
+      status: 'Pending',
+    };
+    onAddPatient(patient);
+    onSelectPatient(patient.id);
+    setScanOrigin('manual');
+    setScanState('confirmed');
+    setShowManualSearch(false);
+    setShowAddPatient(false);
+  };
+
+  const importWorkbook = async (file?: File) => {
+    if (!file) return;
+    setImportError('');
+    setImportSummary('');
+    setIsImporting(true);
+    try {
+      const XLSX = await import('xlsx');
+      const workbook = XLSX.read(await file.arrayBuffer(), { cellDates: false });
+      let headerRow: string[] | undefined;
+      let dataRows: unknown[][] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false });
+        const headerIndex = rows.findIndex((row) => {
+          const keys = row.map((value) => String(value).trim().toLowerCase());
+          return keys.includes('hn') && keys.includes('name') && keys.includes('real_res');
+        });
+        if (headerIndex >= 0) {
+          headerRow = (rows[headerIndex] as unknown[]).map((value) => String(value).trim());
+          dataRows = rows.slice(headerIndex + 1) as unknown[][];
+          break;
+        }
+      }
+      if (!headerRow) throw new Error('ไม่พบหัวคอลัมน์ HN, name และ real_res ในไฟล์');
+
+      const columnIndex = new Map(headerRow.map((name, index) => [name.toLowerCase(), index]));
+      const normalizeHeader = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[\s_./()\-]/g, '');
+      const areaHeaderAliases = new Set([
+        'area', 'screeningarea', 'pcu', 'pcuname', 'facility', 'facilityname', 'healthcenter', 'healthcentername',
+        'village', 'villagename', 'พื้นที่', 'พื้นที่รพสต', 'หมู่บ้าน', 'หมู่', 'รพสต', 'ชื่อรพสต',
+        'หน่วยบริการ', 'สถานบริการ', 'รพสตที่ให้บริการ', 'ชื่อหน่วยบริการ',
+      ].map(normalizeHeader));
+      const areaColumnIndex = headerRow.findIndex((name) => areaHeaderAliases.has(normalizeHeader(name)));
+      const valueAt = (row: unknown[], key: string) => {
+        const index = columnIndex.get(key);
+        return index === undefined ? '' : String(row[index] ?? '').trim();
+      };
+      const parsedPatients: Patient[] = [];
+      const patientIndexByHn = new Map<string, number>();
+      let validSourceRows = 0;
+      let missingAreaRows = 0;
+      for (const row of dataRows) {
+        const hn = valueAt(row, 'hn');
+        const name = valueAt(row, 'name');
+        const resultName = valueAt(row, 'result_name').toLowerCase();
+        const egfr = Number(valueAt(row, 'real_res'));
+        if (!hn || !name || !Number.isFinite(egfr) || egfr < 0) continue;
+        if (resultName && resultName !== 'egfr') continue;
+        validSourceRows += 1;
+        const normalizedHn = normalizeCode(hn);
+        const rawSex = valueAt(row, 'sex');
+        const rawAge = Number(valueAt(row, 'age'));
+        const areaFromFile = areaColumnIndex < 0 ? '' : String(row[areaColumnIndex] ?? '').trim();
+        const resolvedArea = areaFromFile || importArea.trim();
+        if (!resolvedArea) missingAreaRows += 1;
+        const convertExcelDate = (raw: string) => {
+          const match = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+          if (match) {
+            const year = Number(match[1]) > 2400 ? Number(match[1]) - 543 : Number(match[1]);
+            return `${year}-${match[2]}-${match[3]}`;
+          }
+          const dayFirst = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+          if (!dayFirst) return undefined;
+          const year = Number(dayFirst[3]) > 2400 ? Number(dayFirst[3]) - 543 : Number(dayFirst[3]);
+          return `${year}-${dayFirst[2].padStart(2, '0')}-${dayFirst[1].padStart(2, '0')}`;
+        };
+        const labResultDate = convertExcelDate(valueAt(row, 'max_res_date'));
+        const registeredDate = convertExcelDate(valueAt(row, 'registdate'));
+        const importedPatient: Patient = {
+          id: `IMPORT-${normalizedHn}`,
+          name,
+          citizenId: hn,
+          age: Number.isFinite(rawAge) && rawAge >= 0 ? rawAge : 0,
+          gender: rawSex === 'ช' || rawSex === 'ชาย' ? 'ชาย' : rawSex === 'ญ' || rawSex === 'หญิง' ? 'หญิง' : rawSex || undefined,
+          height: 0,
+          egfr,
+          metforminDose: '',
+          hasDehydration: false,
+          hasAlcohol: false,
+          riskLevel: 'Green',
+          screeningArea: resolvedArea || undefined,
+          cardId: valueAt(row, 'cardid') || undefined,
+          labResultDate,
+          registeredDate,
+          screenedBy: 'นำเข้าจากไฟล์ Excel',
+          status: 'Pending',
+        };
+        const existingIndex = patientIndexByHn.get(normalizedHn);
+        if (existingIndex === undefined) {
+          patientIndexByHn.set(normalizedHn, parsedPatients.length);
+          parsedPatients.push(importedPatient);
+        } else if ((importedPatient.labResultDate || '') > (parsedPatients[existingIndex].labResultDate || '')) {
+          parsedPatients[existingIndex] = importedPatient;
+        }
+      }
+      if (!parsedPatients.length) throw new Error('ไม่พบแถวข้อมูล HN และ eGFR ที่นำเข้าได้');
+      if (missingAreaRows > 0) {
+        throw new Error(`ยังขาดพื้นที่ ${missingAreaRows.toLocaleString()} แถว กรุณากรอกพื้นที่สำรอง แล้วเลือกไฟล์เดิมอีกครั้ง`);
+      }
+      const { added, updated } = await onImportPatients(parsedPatients);
+      const areaDescription = areaColumnIndex >= 0
+        ? `ใช้พื้นที่จากคอลัมน์ “${headerRow[areaColumnIndex]}”${importArea.trim() ? ` และพื้นที่สำรอง “${importArea.trim()}” สำหรับแถวว่าง` : ''}`
+        : `ใช้พื้นที่สำรอง “${importArea.trim()}” กับทุกรายการ`;
+      setImportSummary(`อ่าน ${validSourceRows.toLocaleString()} แถว · ได้ ${parsedPatients.length.toLocaleString()} ราย (รวม HN ซ้ำโดยเลือก eGFR ล่าสุด) · เพิ่มใหม่ ${added.toLocaleString()} · อัปเดต ${updated.toLocaleString()} · ${areaDescription}`);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'อ่านไฟล์ไม่สำเร็จ กรุณาตรวจสอบรูปแบบไฟล์');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const isScanning = scanState === 'scanning';
   const showScanner = scanState !== 'confirmed' && !showManualSearch;
@@ -213,6 +412,23 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
             className="w-full py-2 text-[13px] font-medium text-[#0E5C33] transition hover:underline">
             ค้นหาด้วยชื่อ HN หรือเลขบัตรแทน
           </button>
+
+          <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4">
+            <div>
+              <h3 className="font-semibold">นำเข้ารายชื่อจาก Excel</h3>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">ระบบอ่าน HN, ชื่อ, เพศ, อายุ และ eGFR จากไฟล์ ถ้ามีคอลัมน์พื้นที่จะใช้พื้นที่รายแถว ถ้าไม่มีจะใช้พื้นที่สำรองกับทั้งไฟล์</p>
+            </div>
+            <label className="block space-y-1 text-xs font-medium text-zinc-600">พื้นที่สำรอง / รพ.สต. (ใช้เมื่อแถวใน Excel ไม่มีพื้นที่)
+              <input value={importArea} onChange={(event) => setImportArea(event.target.value)} placeholder="เช่น รพ.สต. ท่าสาย หรือ หมู่ 1" className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+            </label>
+            <label className={`flex cursor-pointer items-center justify-center rounded-lg bg-[#0E5C33] px-4 py-3 text-sm font-medium text-white hover:bg-[#0A431F] ${isImporting ? 'pointer-events-none opacity-60' : ''}`}>
+              {isImporting ? 'กำลังอ่านและบันทึกไฟล์…' : 'เลือกไฟล์ Excel (.xlsx / .xls)'}
+              <input type="file" accept=".xlsx,.xls" disabled={isImporting} className="sr-only" onChange={(event) => { void importWorkbook(event.target.files?.[0]); event.currentTarget.value = ''; }} />
+            </label>
+            <p className="text-[11px] leading-relaxed text-zinc-400">ไฟล์จะไม่ถูกส่งขึ้น backend; ข้อมูลที่ไฟล์ตัวอย่างไม่มี เช่น วันเกิด, พื้นที่เดิม, น้ำหนัก, ส่วนสูง และขนาดยา ต้องกรอกเพิ่มก่อนใช้ประเมิน</p>
+            {importError && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">{importError}</p>}
+            {importSummary && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800">{importSummary}</p>}
+          </section>
         </div>
       )}
 
@@ -225,15 +441,60 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
           {scannerError && <p role="alert" className="rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">{scannerError}{scannedValue && <span className="mt-1 block font-mono">รหัสที่อ่านได้: {scannedValue}</span>}</p>}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-            <input type="search" autoFocus value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            <input type="search" autoFocus value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setVisiblePatientLimit(100); }}
               placeholder="ชื่อ HN เลขบัตร หรือ Patient ID" aria-label="ค้นหาผู้ป่วย"
               className="w-full rounded-xl border border-zinc-200 bg-white py-3 pl-10 pr-4 outline-none transition placeholder:text-zinc-400 focus:border-[#0E5C33] focus:ring-2 focus:ring-[#0E5C33]/15" />
           </div>
-          <p className="px-1 text-xs text-zinc-400">{searchQuery.trim() ? `พบ ${filteredPatients.length} จาก ${patients.length} คน` : `ผู้ป่วยทั้งหมด ${patients.length} คน`}</p>
-          <div className="max-h-80 overflow-y-auto rounded-2xl border border-zinc-200 bg-white">
+          <p className="px-1 text-xs text-zinc-400">{searchQuery.trim() ? `พบ ${filteredPatients.length} จาก ${patients.length} คน · แสดง ${visiblePatients.length} ราย` : `ผู้ป่วยทั้งหมด ${patients.length} คน · แสดง ${visiblePatients.length} ราย พิมพ์ชื่อหรือ HN เพื่อค้นหา`}</p>
+          {!showAddPatient && (
+            <button type="button" onClick={() => { setShowAddPatient(true); setAddPatientError(''); }} className="w-full rounded-xl border border-dashed border-[#0E5C33]/40 px-4 py-3 text-sm font-medium text-[#0E5C33] hover:bg-emerald-50">
+              + ไม่พบรายชื่อ? เพิ่มผู้ป่วยด้วยการกรอกมือ
+            </button>
+          )}
+          {showAddPatient && (
+            <form onSubmit={createPatient} className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
+              <div>
+                <h3 className="font-semibold">เพิ่มผู้ป่วยใหม่</h3>
+                <p className="mt-1 text-xs text-zinc-500">กรอกวันเกิด ระบบคำนวณอายุให้อัตโนมัติ</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-xs font-medium text-zinc-600">ชื่อ-นามสกุล
+                  <input required value={newPatientName} onChange={(e) => setNewPatientName(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+                </label>
+                <label className="space-y-1 text-xs font-medium text-zinc-600">HN / เลขบัตรประชาชน
+                  <input required value={newPatientHn} onChange={(e) => setNewPatientHn(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+                </label>
+                <label className="space-y-1 text-xs font-medium text-zinc-600">วันเดือนปีเกิด
+                  <input required type="date" max={new Date().toISOString().slice(0, 10)} value={newPatientBirthDate} onChange={(e) => setNewPatientBirthDate(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+                </label>
+                <div className="space-y-1 text-xs font-medium text-zinc-600">อายุที่คำนวณได้
+                  <p className="rounded-lg bg-zinc-50 px-3 py-2.5 text-sm text-zinc-800">{calculatedAge === null ? 'กรอกวันเกิดเพื่อคำนวณ' : `${calculatedAge} ปี`}</p>
+                </div>
+                <label className="space-y-1 text-xs font-medium text-zinc-600">เพศ
+                  <select value={newPatientGender} onChange={(e) => setNewPatientGender(e.target.value)} className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]"><option value="หญิง">หญิง</option><option value="ชาย">ชาย</option><option value="อื่น ๆ">อื่น ๆ</option></select>
+                </label>
+                <label className="space-y-1 text-xs font-medium text-zinc-600">พื้นที่ / หมู่บ้าน
+                  <input value={newPatientArea} onChange={(e) => setNewPatientArea(e.target.value)} placeholder="เช่น หมู่ 1 หรือ บ้านดู่" className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+                </label>
+                <label className="space-y-1 text-xs font-medium text-zinc-600">eGFR ล่าสุด
+                  <input required type="number" min="0" step="any" value={newPatientEgfr} onChange={(e) => setNewPatientEgfr(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+                </label>
+                <label className="space-y-1 text-xs font-medium text-zinc-600">Metformin (มก./วัน)
+                  <input required type="number" min="0" step="any" value={newPatientDose} onChange={(e) => setNewPatientDose(e.target.value)} className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+                </label>
+              </div>
+              {addPatientError && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">{addPatientError}</p>}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShowAddPatient(false)} className="flex-1 rounded-lg border border-zinc-200 px-3 py-2.5 text-sm font-medium">ยกเลิก</button>
+                <button type="submit" disabled={!newPatientName.trim() || !newPatientHn.trim() || calculatedAge === null} className="flex-1 rounded-lg bg-[#0E5C33] px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50">บันทึกผู้ป่วย</button>
+              </div>
+            </form>
+          )}
+          <div className="max-h-[60vh] min-h-[320px] overflow-y-auto rounded-2xl border border-zinc-200 bg-white">
             {filteredPatients.length === 0 ? <p className="py-10 text-center text-zinc-400">ไม่พบรายชื่อผู้ป่วย</p> : (
+              <>
               <ul className="divide-y divide-zinc-100">
-                {filteredPatients.map((patient) => {
+                {visiblePatients.map((patient) => {
                   const status = riskInfo(patient.riskLevel);
                   return <li key={patient.id}>
                     <button type="button" onClick={() => { onSelectPatient(patient.id); setScanOrigin('manual'); setScanState('confirmed'); setShowManualSearch(false); }}
@@ -245,6 +506,8 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
                   </li>;
                 })}
               </ul>
+              {filteredPatients.length > visiblePatients.length && <button type="button" onClick={() => setVisiblePatientLimit((limit) => limit + 100)} className="w-full border-t border-zinc-100 px-4 py-3 text-sm font-medium text-[#0E5C33] hover:bg-emerald-50">แสดงเพิ่มอีก {Math.min(100, filteredPatients.length - visiblePatients.length)} ราย ({visiblePatients.length}/{filteredPatients.length})</button>}
+              </>
             )}
           </div>
         </div>
@@ -258,6 +521,13 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0E5C33] text-lg font-semibold text-white" aria-hidden>{initialOf(currentPatient.name)}</div>
               <div className="min-w-0"><p className="truncate text-lg font-semibold tracking-tight">{currentPatient.name}</p><p className="text-zinc-500">HN <span className="font-mono text-zinc-800">{currentPatient.citizenId}</span> · อายุ {currentPatient.age} ปี</p></div>
             </div>
+            {needsDoseEntry && (
+              <label className="mt-4 block space-y-1 text-xs font-medium text-zinc-600">ขนาดยา Metformin ปัจจุบัน (มก./วัน)
+                <input type="number" min="1" step="any" value={doseEntry} onChange={(event) => setDoseEntry(event.target.value)} placeholder="กรอกขนาดยาที่ใช้อยู่" className="w-full rounded-lg border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#0E5C33]" />
+                <span className="block font-normal text-zinc-400">ไฟล์นำเข้าไม่มีคอลัมน์ขนาดยา จึงต้องกรอกก่อนตรวจ Part 1</span>
+              </label>
+            )}
+            {scannerError && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">{scannerError}</p>}
             <div className="mt-5 grid grid-cols-2 divide-x divide-zinc-100 border-t border-zinc-100 pt-4">
               <div><p className="text-xs text-zinc-500">ระดับความเสี่ยงเดิม</p><p className="mt-1.5 flex items-center gap-2 font-semibold"><span className={`h-2 w-2 rounded-full ${riskInfo(currentPatient.riskLevel).dot}`} />{riskInfo(currentPatient.riskLevel).label}</p></div>
               <div className="pl-4"><p className="text-xs text-zinc-500">eGFR ล่าสุด</p><p className="mt-1 font-mono text-xl font-semibold leading-none">{currentPatient.egfr}<span className="ml-1 font-sans text-xs font-normal text-zinc-400">mL/min</span></p></div>
@@ -265,7 +535,7 @@ export const Step1ScanHN: React.FC<Step1ScanHNProps> = ({
           </section>
           <div className="grid grid-cols-5 gap-2.5">
             <button type="button" onClick={() => { setScanState('idle'); setScanOrigin(null); setScannerError(''); }} className="col-span-2 flex h-12 items-center justify-center gap-1.5 rounded-xl border border-zinc-200 font-medium text-zinc-600 transition hover:bg-zinc-50"><RotateCcw className="h-4 w-4" />สแกนใหม่</button>
-            <button type="button" onClick={onConfirm} className="col-span-3 h-12 rounded-xl bg-[#0E5C33] font-medium text-white transition hover:bg-[#0A431F]">ถูกต้อง · ถัดไป</button>
+            <button type="button" onClick={confirmPatient} disabled={needsDoseEntry && !doseEntry} className="col-span-3 h-12 rounded-xl bg-[#0E5C33] font-medium text-white transition hover:bg-[#0A431F] disabled:opacity-50">ถูกต้อง · ถัดไป</button>
           </div>
         </div>
       )}

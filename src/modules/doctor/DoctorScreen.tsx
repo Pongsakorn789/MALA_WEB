@@ -3,24 +3,20 @@ import type { Patient } from '../../types';
 import { DoctorSidebar } from './components/DoctorSidebar';
 import { DoctorHeader } from './components/DoctorHeader';
 import { OverviewTab } from './tabs/OverviewTab';
-import { MyPatientsTab } from './tabs/MyPatientsTab';
 import { OrderPrescriptionTab } from './tabs/OrderPrescriptionTab';
 import { DoctorSettingsTab } from './tabs/DoctorSettingsTab';
-import { ReportsTab } from '../shph/tabs/ReportsTab';
 
 interface DoctorScreenProps {
   patients: Patient[];
   onPrescribe: (patientId: string, order: string) => void;
-  onUpdatePatient?: (updated: Patient) => void; // รับฟังก์ชันอัปเดตข้อมูลแก้ไขหน้างาน
   onLogout: () => void;
 }
 
-type DoctorTab = 'overview' | 'patients' | 'prescribe' | 'reports' | 'settings';
+type DoctorTab = 'overview' | 'prescribe' | 'settings';
 
 export const DoctorScreen: React.FC<DoctorScreenProps> = ({
   patients,
   onPrescribe,
-  onUpdatePatient,
   onLogout,
 }) => {
   const [currentTab, setCurrentTab] = useState<DoctorTab>('overview');
@@ -32,15 +28,15 @@ export const DoctorScreen: React.FC<DoctorScreenProps> = ({
   const redirectTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(redirectTimer.current), []);
 
-  // นับจำนวนเคสสีแดงที่ยังรอแพทย์สั่งการจริง (ไม่มีคำสั่งยาและเป็น Escalated)
-  const pendingRedPatients = patients.filter(
-    (p) => p.riskLevel === 'Red' && p.status === 'Escalated' && !p.doctorOrder
+  // คิวแพทย์รับเฉพาะเคสที่ Part 1 พบขนาดยาไม่ผ่านเกณฑ์
+  const pendingDosePatients = patients.filter(
+    (p) => p.caseType === 'DOSE_REVIEW' && p.status !== 'Resolved' && !p.doctorOrder
   );
-  const redCount = pendingRedPatients.length;
+  const redCount = pendingDosePatients.length;
 
   // คนไข้ที่กำลังเปิดสั่งยาอยู่ (ถ้ามีเลือกไว้ ให้ใช้คนนั้น ถ้าไม่มี ให้หยิบเคสที่รอตรวจคนแรก)
   const currentPrescribePatient =
-    patients.find((p) => p.id === selectedPatientId) || pendingRedPatients[0] || patients[0];
+    patients.find((p) => p.id === selectedPatientId) || pendingDosePatients[0] || patients[0];
 
   // เมื่อแพทย์กดเลือกจากหน้ารายการ/หน้าภาพรวม
   const handleSelectToPrescribe = (patientId: string) => {
@@ -69,16 +65,6 @@ export const DoctorScreen: React.FC<DoctorScreenProps> = ({
           {currentTab === 'overview' && (
             <OverviewTab patients={patients} onSelectPatient={handleSelectToPrescribe} />
           )}
-
-          {currentTab === 'patients' && (
-            <MyPatientsTab
-              patients={patients}
-              onPrescribe={onPrescribe}
-              onUpdatePatient={onUpdatePatient}
-            />
-          )}
-
-          {currentTab === 'reports' && <ReportsTab patients={patients} />}
 
           {currentTab === 'prescribe' && currentPrescribePatient && (
             <OrderPrescriptionTab
