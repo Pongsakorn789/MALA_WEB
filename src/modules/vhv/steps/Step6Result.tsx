@@ -115,7 +115,7 @@ export const Step6Result: React.FC<Step6ResultProps> = ({
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Part 2 · ความเสี่ยงต่อ MALA</p>
             <h2 className={`mt-2 text-lg font-semibold ${accent.text}`}>{risk === 'Yellow' ? 'เข้าเกณฑ์เสี่ยงต่อ MALA' : 'ยังไม่เข้าเกณฑ์เสี่ยงจากคะแนน'}</h2>
           </div>
-          <span className={`rounded-full px-3 py-1 text-xs font-medium ${accent.soft}`}>{riskScore} คะแนน</span>
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${accent.soft}`}>{riskScore}/5 คะแนน</span>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">เกณฑ์ตามตาราง: คะแนนตั้งแต่ 2 ขึ้นไปถือว่าเสี่ยง</p>
         <ul className="mt-3 space-y-1.5 text-xs text-zinc-600">
