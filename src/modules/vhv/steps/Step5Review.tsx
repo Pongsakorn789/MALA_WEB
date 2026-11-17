@@ -156,8 +156,8 @@ export const Step5Review: React.FC<Step5ReviewProps> = ({
         </div>
         <div className={`rounded-2xl border p-4 ${malaScore >= 2 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
           <p className="text-xs font-semibold text-zinc-500">Part 2 · คะแนนความเสี่ยง MALA</p>
-          <p className="mt-1 font-semibold">{malaScore} คะแนน {malaScore >= 2 ? '· เข้าเกณฑ์เสี่ยง' : '· ต่ำกว่าเกณฑ์เสี่ยง'}</p>
-          <p className="mt-1 text-xs text-zinc-500">eGFR &lt;60 = 1 · BMI &lt;23 = 2 · ดื่มหนัก = 2 · ตั้งแต่ 2 คะแนนถือว่าเสี่ยง</p>
+          <p className="mt-1 font-semibold">{malaScore}/5 คะแนน {malaScore >= 2 ? '· เข้าเกณฑ์เสี่ยง' : '· ต่ำกว่าเกณฑ์เสี่ยง'}</p>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">เกณฑ์ให้คะแนน: eGFR &lt;60 ได้ 1 คะแนน · BMI &lt;23 ได้ 2 คะแนน · ดื่มหนักตามเกณฑ์ได้ 2 คะแนน (รวมสูงสุด 5 คะแนน) · ตั้งแต่ 2 คะแนนถือว่าเสี่ยง</p>
         </div>
       </section>
 
@@ -181,7 +181,7 @@ export const Step5Review: React.FC<Step5ReviewProps> = ({
         </ul>
       </section>
 
-      <p className="px-1 text-center text-xs text-zinc-400">บันทึกโดย อสม. ประจำหมู่ 1</p>
+      <p className="px-1 text-center text-xs text-zinc-400">บันทึกโดย จนท. รพ.สต. ท่าสาย</p>
     </div>
   );
 };
